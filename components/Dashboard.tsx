@@ -1,18 +1,30 @@
 "use client";
 import { useMemo, useState } from "react";
 import { AppState } from "@/lib/types";
-import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD } from "@/lib/portfolio";
-import { Donut, LineChart } from "./Charts";
+import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD, rebase, totalReturn, currentDrawdown } from "@/lib/portfolio";
+import { Donut, LineChart, Sparkline } from "./Charts";
 
 const moveCol = (x: number) => x > 1e-9 ? "text-gain" : x < -1e-9 ? "text-loss" : "text-fog";
+const PERIODS: [string, number][] = [["1M", 30], ["3M", 91], ["6M", 182], ["1Y", 365], ["All", Infinity]];
+const signedPct = (x: number, unit = "%") => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}${unit}`;
 
-export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base }: {
+function Metric({ label, val, cls }: { label: string; val: string; cls: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
+      <p className={`num text-sm mt-0.5 ${cls}`}>{val}</p>
+    </div>
+  );
+}
+
+export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale }: {
   state: AppState; valued: Valued[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
-  hist: any; base: string;
+  hist: any; base: string; asOf: number | null; stale: boolean;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
   const [showAllMovers, setShowAllMovers] = useState(false);
+  const [period, setPeriod] = useState("All");
 
   const dayPnl = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
   const totalPnl = valued.reduce((a, v) => a + v.unrealizedUSD + v.realizedUSD, 0);
@@ -28,7 +40,8 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
     .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)), [valued]);
   const visibleMovers = showAllMovers ? movers : movers.slice(0, 6);
 
-  const chart = useMemo(() => {
+  // full TWR index and benchmark index over all available history, both based at 100
+  const full = useMemo(() => {
     if (!hist?.series || !state.transactions.length) return null;
     const allDates = new Set<string>();
     Object.values<any>(hist.series).forEach((s: any) => s.dates.forEach((d: string) => allDates.add(d)));
@@ -50,6 +63,33 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
     return { labels: dates.slice(start), idx, bIdx };
   }, [hist, state.transactions]);
 
+  // slice the full series to the selected period and re-base both lines to 100 at its start
+  const view = useMemo(() => {
+    if (!full) return null;
+    const days = PERIODS.find(([p]) => p === period)?.[1] ?? Infinity;
+    let s = 0;
+    if (isFinite(days) && full.labels.length) {
+      const cut = new Date(full.labels[full.labels.length - 1]);
+      cut.setDate(cut.getDate() - days);
+      const cutoff = cut.toISOString().slice(0, 10);
+      const i = full.labels.findIndex(d => d >= cutoff);
+      s = i < 0 ? 0 : i;
+    }
+    const idx = rebase(full.idx.slice(s));
+    const bIdx = full.bIdx ? rebase(full.bIdx.slice(s)) : null;
+    return { labels: full.labels.slice(s), idx, bIdx };
+  }, [full, period]);
+
+  const stats = useMemo(() => {
+    if (!view || view.idx.length < 2) return null;
+    const periodRet = totalReturn(view.idx);
+    const benchRet = view.bIdx ? totalReturn(view.bIdx) : null;
+    return { periodRet, benchRet, activeRet: benchRet === null ? null : periodRet - benchRet, curDD: currentDrawdown(view.idx) };
+  }, [view]);
+
+  const asOfStr = asOf ? new Date(asOf).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" }) : null;
+  const hasChart = !!view && view.idx.length >= 2;
+
   const P = ({ v, pct }: { v: number; pct: number }) => (
     <span className={`num ${v >= 0 ? "text-gain" : "text-loss"}`}>
       {v >= 0 ? "+" : "−"}{fmt(Math.abs(v))} ({(pct * 100).toFixed(2)}%)
@@ -59,8 +99,21 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
   return (
     <>
       <section aria-label="Net asset value">
-        <p className="text-fog text-xs uppercase tracking-widest">Net asset value · {base}</p>
-        <p className="num text-4xl font-medium mt-1">{fmt(navUSD)}</p>
+        <p className="text-fog text-xs uppercase tracking-widest">
+          Net asset value · {base}
+          {asOfStr && <span className="normal-case tracking-normal num"> · {stale ? "stale, last" : "as of"} {asOfStr}</span>}
+        </p>
+        <p className={`num text-4xl font-medium mt-1 ${stale ? "text-fog" : ""}`}>{fmt(navUSD)}</p>
+        {hasChart && (
+          <div className="flex items-center gap-3 mt-1.5">
+            <Sparkline data={view!.idx} />
+            {stats?.activeRet != null && (
+              <span className={`num text-xs ${moveCol(stats.activeRet)}`}>
+                {signedPct(stats.activeRet, "pp")}<span className="text-fog"> vs {state.settings.benchmark}</span>
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex gap-5 mt-2 text-sm">
           <div><span className="text-fog text-xs block">Today</span><P v={dayPnl} pct={dayPct} /></div>
           <div><span className="text-fog text-xs block">Total</span><P v={totalPnl} pct={totalPct} /></div>
@@ -84,10 +137,31 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
       </section>
 
       <section className="card">
-        <h2 className="text-sm font-semibold mb-2">Performance vs {state.settings.benchmark}</h2>
-        <p className="text-[11px] text-fog mb-2">Time-weighted return, indexed to 100. Deposits and withdrawals don't move this line, only investment performance does.</p>
-        {chart ? <LineChart labels={chart.labels} a={chart.idx} b={chart.bIdx} aName="Portfolio (TWR)" bName={state.settings.benchmark} />
+        <div className="flex items-center mb-2">
+          <h2 className="text-sm font-semibold">Performance vs {state.settings.benchmark}</h2>
+          <div className="ml-auto flex gap-1 text-[11px]">
+            {PERIODS.map(([p]) => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`px-2 py-0.5 rounded-full border ${period === p ? "border-brass text-brass" : "border-edge text-fog"}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-fog mb-2">Time-weighted return, both lines re-indexed to 100 at the period start. Deposits and withdrawals don't move this line, only investment performance does.</p>
+        {hasChart
+          ? <LineChart labels={view!.labels} a={view!.idx} b={view!.bIdx} aName="Portfolio (TWR)" bName={state.settings.benchmark} />
           : <p className="text-fog text-xs py-6 text-center">The NAV chart appears once you have dated transactions and price history.</p>}
+        {stats && (
+          <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge text-center">
+            <Metric label="Return" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
+            <Metric label={state.settings.benchmark} val={stats.benchRet === null ? "—" : signedPct(stats.benchRet)}
+              cls={stats.benchRet === null ? "text-fog" : moveCol(stats.benchRet)} />
+            <Metric label="Active" val={stats.activeRet === null ? "—" : signedPct(stats.activeRet, "pp")}
+              cls={stats.activeRet === null ? "text-fog" : moveCol(stats.activeRet)} />
+            <Metric label="Drawdown" val={`${(stats.curDD * 100).toFixed(1)}%`} cls={stats.curDD < -1e-9 ? "text-loss" : "text-fog"} />
+          </div>
+        )}
       </section>
 
       <section className="card">

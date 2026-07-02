@@ -168,6 +168,27 @@ export function dailyReturns(idx: number[]) {
   return r;
 }
 
+// Re-base an index series so its first positive point equals `base` (default 100).
+// Slicing a geometric index then re-basing gives the honest return of the sub-period.
+export function rebase(series: number[], base = 100) {
+  const first = series.find(v => v > 0);
+  if (!first) return series.map(() => base);
+  return series.map(v => (v / first) * base);
+}
+
+// Total return implied by an index series over its full span: last / first - 1.
+export function totalReturn(idx: number[]) {
+  const first = idx.find(v => v > 0);
+  return first ? idx[idx.length - 1] / first - 1 : 0;
+}
+
+// Current drawdown: distance of the final point below the running peak to date (<= 0).
+export function currentDrawdown(idx: number[]) {
+  let peak = -Infinity;
+  for (const v of idx) peak = Math.max(peak, v);
+  return peak > 0 ? idx[idx.length - 1] / peak - 1 : 0;
+}
+
 // ---------- Risk ----------
 export function annVol(rets: number[]) {
   const r = rets.filter(x => isFinite(x));

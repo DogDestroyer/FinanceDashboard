@@ -35,6 +35,20 @@ export function Donut({ data, total }: { data: [string, number][]; total: number
   );
 }
 
+export function Sparkline({ data, width = 76, height = 26, color = "#D9A441" }:
+  { data: number[]; width?: number; height?: number; color?: string }) {
+  if (!data || data.length < 2) return null;
+  const min = Math.min(...data), max = Math.max(...data);
+  const span = max - min || 1;
+  const pts = data.map((v, i) =>
+    `${(i / (data.length - 1)) * width},${height - ((v - min) / span) * (height - 2) - 1}`).join(" L");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Portfolio trend">
+      <path d={`M${pts}`} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function LineChart({ labels, a, b, aName, bName }:
   { labels: string[]; a: number[]; b?: number[] | null; aName: string; bName?: string }) {
   const W = 340, H = 150, P = 6;

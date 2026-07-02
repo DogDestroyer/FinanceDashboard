@@ -21,6 +21,8 @@ export default function App() {
   const [showTx, setShowTx] = useState(false);
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [err, setErr] = useState("");
+  const [asOf, setAsOf] = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
 
   useEffect(() => { setPasscode(localStorage.getItem("passcode")); }, []);
 
@@ -71,7 +73,8 @@ export default function App() {
           q[k] = { ...v, currency: v.currency === "TRADE" ? (pos?.currency ?? "USD") : v.currency };
         }
         setQuotes(q); setFx({ USD: 1, ...j.fx });
-      } catch { setErr("Price fetch failed. Retrying."); }
+        setAsOf(Date.now()); setStale(false); setErr("");
+      } catch { setStale(true); setErr("Price fetch failed. Retrying."); }
     };
     pull();
     const id = setInterval(pull, 60_000);
@@ -121,7 +124,7 @@ export default function App() {
 
       <main className="flex-1 px-4 space-y-4 pt-2">
         {tab === "Book" && <Dashboard state={state} valued={valued} cash={cash} cashUSD={cashUSD}
-          navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} />}
+          navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale} />}
         {tab === "Holdings" && <Holdings valued={valued} fmt={fmt} txs={state.transactions} onDelete={delTx} onEdit={openTx} />}
         {tab === "Risk" && <Risk valued={valued} cash={cash} cashUSD={cashUSD} navUSD={navUSD} fx={fx} hist={hist} state={state} />}
         {tab === "Attribution" && <Attribution valued={valued} navUSD={navUSD} fmt={fmt} />}
