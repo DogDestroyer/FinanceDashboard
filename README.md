@@ -1,4 +1,4 @@
-# Book — personal multi-asset portfolio manager
+# Delta AM — personal multi-asset portfolio manager
 
 Mobile-first PWA. Transaction-based accounting, dual USD/SGD base currency, live prices, TWR performance vs benchmark, risk, attribution, rebalancing, and an investment journal.
 

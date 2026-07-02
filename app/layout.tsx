@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Book",
-  description: "Personal multi-asset portfolio book",
+  title: "Delta AM",
+  description: "Personal multi-asset portfolio manager",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Book" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Delta AM" },
   icons: { apple: "/icon-180.png" }
 };
 export const viewport: Viewport = {

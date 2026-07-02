@@ -111,7 +111,7 @@ export default function App() {
   return (
     <div className="max-w-lg mx-auto min-h-screen flex flex-col" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 84px)" }}>
       <header className="flex items-center px-4 pt-4 pb-2 gap-3">
-        <h1 className="font-sans font-700 text-lg tracking-tight font-bold">Book</h1>
+        <h1 className="font-sans font-700 text-lg tracking-tight font-bold">Delta AM</h1>
         <button onClick={() => { const b = base === "USD" ? "SGD" : "USD"; setBase(b); update("settings", { ...state.settings, base: b }); }}
           className="num text-xs border border-edge rounded-full px-3 py-1 text-fog" aria-label="Toggle base currency">
           {base} <span className="text-brass">⇄</span> {base === "USD" ? "SGD" : "USD"}
@@ -157,7 +157,7 @@ function Gate({ onSet }: { onSet: (p: string) => void }) {
   return (
     <div className="min-h-screen flex items-center justify-center px-8">
       <div className="w-full max-w-xs space-y-4 text-center">
-        <h1 className="font-bold text-xl">Book</h1>
+        <h1 className="font-bold text-xl">Delta AM</h1>
         <p className="text-fog text-sm">Enter your passcode to unlock your portfolio.</p>
         <input type="password" value={v} onChange={e => setV(e.target.value)} placeholder="Passcode" autoFocus />
         <button onClick={() => v && onSet(v)} className="w-full bg-brass text-ink font-semibold rounded-lg py-2">Unlock</button>
