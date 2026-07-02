@@ -209,6 +209,65 @@ export function drawdownSeries(idx: number[]) {
   return out;
 }
 
+// ---------- Money-weighted return (XIRR) ----------
+// External cashflows are DEPOSIT and WITHDRAW only. Buys, sells and dividends
+// move money between sleeves inside the portfolio and are NOT external flows.
+// Investor sign convention: a deposit is money in (negative), a withdrawal is
+// money out to you (positive). Amounts convert to USD at the rate on the flow
+// date, matching how navHistory books external flows.
+export function externalFlows(txs: Tx[], fxSeries: Record<string, Series>): { date: string; amount: number }[] {
+  const fxAt = (ccy: string, date: string) => {
+    if (ccy === "USD") return 1;
+    const s = fxSeries[ccy]; if (!s) return 1;
+    for (let i = s.dates.length - 1; i >= 0; i--) if (s.dates[i] <= date) return s.closes[i];
+    return 1;
+  };
+  return txs
+    .filter(t => t.type === "DEPOSIT" || t.type === "WITHDRAW")
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(t => {
+      const f = fxAt(t.currency, t.date);
+      const amount = t.type === "DEPOSIT" ? -(t.qty - t.fees) * f : (t.qty + t.fees) * f;
+      return { date: t.date, amount };
+    });
+}
+
+// Internal rate of return on dated cashflows (annual, act/365), solved by
+// Newton-Raphson with a bisection fallback. Returns null when it cannot converge
+// or the flows are degenerate: fewer than two flows, or all the same sign.
+export function xirr(cashflows: { date: string; amount: number }[]): number | null {
+  const flows = cashflows.filter(c => isFinite(c.amount) && c.amount !== 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (flows.length < 2) return null;
+  if (!flows.some(c => c.amount > 0) || !flows.some(c => c.amount < 0)) return null;
+  const t0 = new Date(flows[0].date).getTime();
+  const yrs = flows.map(c => (new Date(c.date).getTime() - t0) / (365 * 86400000));
+  const amt = flows.map(c => c.amount);
+  const npv = (r: number) => amt.reduce((s, a, i) => s + a / Math.pow(1 + r, yrs[i]), 0);
+  const dnpv = (r: number) => amt.reduce((s, a, i) => s - a * yrs[i] / Math.pow(1 + r, yrs[i] + 1), 0);
+
+  let r = 0.1;
+  for (let i = 0; i < 60; i++) {
+    if (!(r > -0.999999)) break;
+    const f = npv(r), d = dnpv(r);
+    if (!isFinite(f) || !isFinite(d) || d === 0) break;
+    const next = r - f / d;
+    if (!isFinite(next)) break;
+    if (Math.abs(next - r) < 1e-8) return next > -0.999999 ? next : null;
+    r = next;
+  }
+  // bisection fallback on a bracketed sign change
+  let lo = -0.9999, hi = 10, flo = npv(lo), fhi = npv(hi);
+  if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2, fm = npv(mid);
+    if (!isFinite(fm)) return null;
+    if (Math.abs(fm) < 1e-8 || hi - lo < 1e-10) return mid;
+    if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+  }
+  return (lo + hi) / 2;
+}
+
 // ---------- Risk ----------
 export function annVol(rets: number[]) {
   const r = rets.filter(x => isFinite(x));

@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { AppState } from "@/lib/types";
-import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD, rebase, totalReturn, currentDrawdown } from "@/lib/portfolio";
+import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD, rebase, totalReturn, currentDrawdown, externalFlows, xirr } from "@/lib/portfolio";
 import { Donut, Sparkline } from "./Charts";
 import type { TSSeries } from "./TSChart";
 
@@ -98,6 +98,21 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
     return s;
   }, [view, state.settings.benchmark]);
 
+  // money-weighted return since inception: external flows (deposits negative,
+  // withdrawals positive) plus today's NAV as a terminal positive flow.
+  const mwr = useMemo(() => {
+    if (!hist || navUSD <= 0) return null;
+    const flows = externalFlows(state.transactions, hist.fxSeries ?? {});
+    if (!flows.length) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const r = xirr([...flows, { date: today, amount: navUSD }]);
+    if (r === null) return null;
+    const days = Math.round((new Date(today).getTime() - new Date(flows[0].date).getTime()) / 86400000);
+    const annualized = days >= 30;
+    // below 30 days, annualizing is noise; show the un-annualized holding period return
+    return { value: annualized ? r : Math.pow(1 + r, days / 365) - 1, annualized, days };
+  }, [hist, state.transactions, navUSD]);
+
   const asOfStr = asOf ? new Date(asOf).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" }) : null;
   const hasChart = !!view && view.idx.length >= 2;
 
@@ -176,14 +191,24 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
           ? <TSChart series={navSeries} height={200} valueFmt={idxFmt} spreadLabel="active" />
           : <p className="text-fog text-xs py-6 text-center">The NAV chart appears once you have dated transactions and price history.</p>}
         {stats && (
-          <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge text-center">
-            <Metric label="Return" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
-            <Metric label={state.settings.benchmark} val={stats.benchRet === null ? "—" : signedPct(stats.benchRet)}
-              cls={stats.benchRet === null ? "text-fog" : moveCol(stats.benchRet)} />
-            <Metric label="Active" val={stats.activeRet === null ? "—" : signedPct(stats.activeRet, "pp")}
-              cls={stats.activeRet === null ? "text-fog" : moveCol(stats.activeRet)} />
-            <Metric label="Drawdown" val={`${(stats.curDD * 100).toFixed(1)}%`} cls={stats.curDD < -1e-9 ? "text-loss" : "text-fog"} />
-          </div>
+          <>
+            <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge text-center">
+              <Metric label="Return" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
+              <Metric label={state.settings.benchmark} val={stats.benchRet === null ? "—" : signedPct(stats.benchRet)}
+                cls={stats.benchRet === null ? "text-fog" : moveCol(stats.benchRet)} />
+              <Metric label="Active" val={stats.activeRet === null ? "—" : signedPct(stats.activeRet, "pp")}
+                cls={stats.activeRet === null ? "text-fog" : moveCol(stats.activeRet)} />
+              <Metric label="Drawdown" val={`${(stats.curDD * 100).toFixed(1)}%`} cls={stats.curDD < -1e-9 ? "text-loss" : "text-fog"} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-2 pt-2 text-center">
+              <Metric label="TWR" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
+              <Metric label={mwr && !mwr.annualized ? `MWR ${mwr.days}d` : "XIRR"} val={mwr ? signedPct(mwr.value) : "—"}
+                cls={mwr ? moveCol(mwr.value) : "text-fog"} />
+              <Metric label="Timing gap" val={mwr ? signedPct(stats.periodRet - mwr.value, "pp") : "—"}
+                cls={mwr ? moveCol(stats.periodRet - mwr.value) : "text-fog"} />
+            </div>
+            <p className="text-[11px] text-fog mt-2">TWR is what your strategy earned; XIRR is what your dollars earned. The gap is your deposit timing.</p>
+          </>
         )}
       </section>
 
