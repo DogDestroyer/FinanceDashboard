@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: #0D1321; color: #E9EDF5; font-feature-settings: "tnum" 1; }
+* { -webkit-tap-highlight-color: transparent; }
+::selection { background: #D9A44133; }
+input, select, textarea {
+  @apply bg-ink border border-edge rounded-lg px-3 py-2 text-sm text-paper w-full;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid #D9A44166; outline-offset: 0; }
+.num { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.card { @apply bg-panel border border-edge rounded-2xl p-4; }
+.hair { @apply border-t border-edge; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
