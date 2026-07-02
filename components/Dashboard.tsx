@@ -4,12 +4,15 @@ import { AppState } from "@/lib/types";
 import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD } from "@/lib/portfolio";
 import { Donut, LineChart } from "./Charts";
 
+const moveCol = (x: number) => x > 1e-9 ? "text-gain" : x < -1e-9 ? "text-loss" : "text-fog";
+
 export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base }: {
   state: AppState; valued: Valued[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
   hist: any; base: string;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
+  const [showAllMovers, setShowAllMovers] = useState(false);
 
   const dayPnl = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
   const totalPnl = valued.reduce((a, v) => a + v.unrealizedUSD + v.realizedUSD, 0);
@@ -20,9 +23,10 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
   const donut = useMemo(() => groupWeights(valued, cash, fx, donutMode), [valued, cash, fx, donutMode]);
   const donutTotal = donut.reduce((a, [, v]) => a + v, 0);
 
-  const movers = [...valued].filter(v => v.prevClose > 0)
-    .map(v => ({ ...v, chg: v.price / v.prevClose - 1 }))
-    .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)).slice(0, 4);
+  const movers = useMemo(() => [...valued].filter(v => v.prevClose > 0)
+    .map(v => ({ symbol: v.symbol, name: v.name, chg: v.price / v.prevClose - 1, dayPnlUSD: v.dayPnlUSD }))
+    .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)), [valued]);
+  const visibleMovers = showAllMovers ? movers : movers.slice(0, 6);
 
   const chart = useMemo(() => {
     if (!hist?.series || !state.transactions.length) return null;
@@ -87,20 +91,26 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
       </section>
 
       <section className="card">
-        <h2 className="text-sm font-semibold mb-2">Top movers today</h2>
+        <div className="flex items-center mb-2">
+          <h2 className="text-sm font-semibold">Movers today</h2>
+          {movers.length > 0 && <span className="ml-auto text-[11px] text-fog num">{movers.length} priced</span>}
+        </div>
         {movers.length === 0 && <p className="text-fog text-xs">No priced positions yet. Add a trade to begin.</p>}
         <div className="space-y-2">
-          {movers.map(m => (
+          {visibleMovers.map(m => (
             <div key={m.symbol} className="flex items-center text-sm">
-              <span className="num font-medium w-16">{m.symbol}</span>
+              <span className="num font-medium w-16 shrink-0">{m.symbol}</span>
               <span className="text-fog text-xs truncate flex-1">{m.name}</span>
-              <span className={`num ${m.chg >= 0 ? "text-gain" : "text-loss"}`}>
-                {(m.chg * 100).toFixed(2)}%
-              </span>
-              <span className={`num w-24 text-right ${m.dayPnlUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(m.dayPnlUSD)}</span>
+              <span className={`num w-16 text-right ${moveCol(m.chg)}`}>{m.chg >= 0 ? "+" : "−"}{Math.abs(m.chg * 100).toFixed(2)}%</span>
+              <span className={`num w-24 text-right ${moveCol(m.chg)}`}>{m.dayPnlUSD >= 0 ? "+" : "−"}{fmt(Math.abs(m.dayPnlUSD))}</span>
             </div>
           ))}
         </div>
+        {movers.length > 6 && (
+          <button onClick={() => setShowAllMovers(!showAllMovers)} className="text-xs text-fog underline underline-offset-2 mt-3">
+            {showAllMovers ? "Show fewer" : `Show all ${movers.length}`}
+          </button>
+        )}
       </section>
     </>
   );
