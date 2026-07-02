@@ -1,13 +1,14 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
 import { AppState, JournalEntry, Tx } from "@/lib/types";
-import { Valued, FxMap, annVol, beta, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries } from "@/lib/portfolio";
+import { Valued, FxMap, annVol, beta, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries, rollingVol, drawdownSeries } from "@/lib/portfolio";
+import { Sparkline, SeriesChart } from "./Charts";
 
 const pct = (x: number | null, dp = 1) => x === null ? "—" : `${(x * 100).toFixed(dp)}%`;
 
 /* ---------------- Holdings ---------------- */
-export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
-  valued: Valued[]; fmt: (usd: number, dp?: number) => string; txs: Tx[];
+export function Holdings({ valued, fmt, txs, hist, onDelete, onEdit }: {
+  valued: Valued[]; fmt: (usd: number, dp?: number) => string; txs: Tx[]; hist: any;
   onDelete: (id: string) => void; onEdit: (tx: Tx) => void;
 }) {
   const [sort, setSort] = useState<keyof Valued>("weight");
@@ -25,6 +26,7 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
           <thead>
             <tr className="text-[10px] uppercase tracking-wide">
               <th className="text-left pb-2"><H k="symbol" label="Position" /></th>
+              <th className="text-left pb-2 font-normal text-fog">Trend</th>
               <th className="text-right pb-2"><H k="weight" label="Wt" /></th>
               <th className="text-right pb-2"><H k="mvUSD" label="Value" /></th>
               <th className="text-right pb-2"><H k="unrealizedUSD" label="Unrl P&L" /></th>
@@ -43,6 +45,7 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
                       <span className="font-medium text-paper"><span className="text-fog">{open ? "▾" : "▸"}</span> {v.symbol}</span>
                       <span className="block text-fog text-[10px]">{v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ {cost.toFixed(2)} {v.currency}</span>
                     </td>
+                    <td className="py-2"><Sparkline data={hist?.series?.[v.symbol]?.closes?.slice(-30) ?? []} width={60} height={20} /></td>
                     <td className="text-right">{(v.weight * 100).toFixed(1)}%</td>
                     <td className="text-right">{fmt(v.mvUSD)}</td>
                     <td className={`text-right ${v.unrealizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.unrealizedUSD)}</td>
@@ -50,7 +53,7 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
                   </tr>
                   {open && (
                     <tr className="bg-ink/40">
-                      <td colSpan={5} className="pb-2">
+                      <td colSpan={6} className="pb-2">
                         <div className="space-y-1.5 px-1 pt-1">
                           {symTxs.map(t => (
                             <div key={t.id} className="flex items-center gap-2 text-[11px]">
@@ -120,8 +123,11 @@ export function Risk({ valued, cash, cashUSD, navUSD, fx, hist, state }: {
       let last = 0; const closes = dates.slice(start).map(d => (last = bMap[d] ?? last));
       b = beta(pr, dailyReturns(closes.map(c => c || 1)));
     }
-    return { vol: annVol(pr), mdd: maxDrawdown(idx), beta: b, obs: pr.length };
+    return { vol: annVol(pr), mdd: maxDrawdown(idx), beta: b, obs: pr.length, idx, rets: pr };
   }, [hist, state.transactions]);
+
+  const riskSeries = useMemo(() =>
+    stats ? { vol: rollingVol(stats.rets, 30), dd: drawdownSeries(stats.idx) } : null, [stats]);
 
   const ccyExposure = useMemo(() => {
     const m: Record<string, number> = {};
@@ -153,6 +159,20 @@ export function Risk({ valued, cash, cashUSD, navUSD, fx, hist, state }: {
         <Stat label="Top-10 concentration" value={pct(top10)}
           note="Weight in your 10 largest positions. Institutional books flag anything north of ~40%." />
       </div>
+      {riskSeries && (
+        <div className="card">
+          <h2 className="text-sm font-semibold mb-1">Rolling volatility, 30 day</h2>
+          <p className="text-[11px] text-fog mb-2">Annualized standard deviation of the trailing 30 days of daily TWR. A rising line means the book is getting choppier, independent of direction.</p>
+          <SeriesChart data={riskSeries.vol} color="#D9A441" label="30-day annualized vol" />
+        </div>
+      )}
+      {riskSeries && (
+        <div className="card">
+          <h2 className="text-sm font-semibold mb-1">Drawdown</h2>
+          <p className="text-[11px] text-fog mb-2">Distance of the TWR index below its running peak. Flat at zero means you are at a high-water mark; the troughs are what you had to sit through.</p>
+          <SeriesChart data={riskSeries.dd} color="#E0596B" fill label="TWR below running peak" />
+        </div>
+      )}
       <div className="card">
         <h2 className="text-sm font-semibold mb-1">Currency exposure</h2>
         <p className="text-[11px] text-fog mb-3">Where your NAV actually lives. For an SGD-based investor, USD assets carry FX risk on top of asset risk.</p>
@@ -188,11 +208,11 @@ export function Attribution({ valued, navUSD, fmt }: {
               <span className="num w-14 font-medium">{r.symbol}</span>
               <div className="flex-1 flex items-center h-2">
                 <div className="w-1/2 flex justify-end">
-                  {r.pnlUSD < 0 && <div className="h-2 bg-loss rounded-l-full" style={{ width: `${Math.abs(r.pnlUSD) / maxAbs * 100}%` }} />}
+                  {r.pnlUSD < 0 && <div className="h-2 bg-loss rounded-l-full transition-[width] duration-500 ease-out" style={{ width: `${Math.abs(r.pnlUSD) / maxAbs * 100}%` }} />}
                 </div>
                 <div className="w-px h-3 bg-edge" />
                 <div className="w-1/2">
-                  {r.pnlUSD >= 0 && <div className="h-2 bg-gain rounded-r-full" style={{ width: `${r.pnlUSD / maxAbs * 100}%` }} />}
+                  {r.pnlUSD >= 0 && <div className="h-2 bg-gain rounded-r-full transition-[width] duration-500 ease-out" style={{ width: `${r.pnlUSD / maxAbs * 100}%` }} />}
                 </div>
               </div>
               <span className={`num w-24 text-right ${r.pnlUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(r.pnlUSD)}</span>

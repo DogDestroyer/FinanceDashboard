@@ -13,9 +13,12 @@ export function Donut({ data, total }: { data: [string, number][]; total: number
           {data.map(([k, v], i) => {
             const frac = total ? v / total : 0;
             const el = (
-              <circle key={k} r={R} fill="none" stroke={PALETTE[i % PALETTE.length]}
+              // key by index (not bucket name) so React reuses the same <circle> across
+              // mode toggles, letting stroke-dasharray/offset transition into a sweep
+              <circle key={i} r={R} fill="none" stroke={PALETTE[i % PALETTE.length]}
                 strokeWidth={R - r} strokeDasharray={`${frac * C} ${C}`}
-                strokeDashoffset={-acc * C} />
+                strokeDashoffset={-acc * C}
+                className="transition-all duration-500 ease-out" />
             );
             acc += frac;
             return el;
@@ -46,6 +49,36 @@ export function Sparkline({ data, width = 76, height = 26, color = "#D9A441" }:
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Portfolio trend">
       <path d={`M${pts}`} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// Single-series chart scaled to its own min/max. Optional low-opacity fill to the
+// peak line (used for the drawdown area). Leading nulls (warm-up windows) are skipped.
+export function SeriesChart({ data, color = "#D9A441", fill = false, height = 96, label }:
+  { data: (number | null)[]; color?: string; fill?: boolean; height?: number; label?: string }) {
+  const W = 340, P = 6, H = height;
+  const pts = data.map(v => (v == null || !isFinite(v)) ? null : v);
+  const nums = pts.filter((v): v is number => v !== null);
+  if (nums.length < 2) return <div className="text-fog text-xs py-6 text-center">Not enough history yet.</div>;
+  const min = Math.min(...nums), max = Math.max(...nums);
+  const span = max - min || 1;
+  const x = (i: number) => P + (i / Math.max(pts.length - 1, 1)) * (W - 2 * P);
+  const y = (v: number) => H - P - ((v - min) / span) * (H - 2 * P);
+  const first = pts.findIndex(v => v !== null);
+  let last = pts.length - 1; while (last > 0 && pts[last] === null) last--;
+  let line = "", started = false;
+  pts.forEach((v, i) => { if (v === null) { started = false; return; } line += `${started ? " L" : " M"}${x(i)},${y(v)}`; started = true; });
+  const area = fill
+    ? `M${x(first)},${y(max)} ` + pts.map((v, i) => v === null ? "" : `L${x(i)},${y(v)} `).join("") + `L${x(last)},${y(max)} Z`
+    : "";
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={label ?? "chart"}>
+        {fill && <path d={area} fill={color} opacity="0.15" />}
+        <path d={line.trim()} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+      {label && <p className="text-[11px] text-fog mt-1">{label}</p>}
+    </div>
   );
 }
 

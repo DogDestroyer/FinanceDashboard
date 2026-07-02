@@ -189,6 +189,26 @@ export function currentDrawdown(idx: number[]) {
   return peak > 0 ? idx[idx.length - 1] / peak - 1 : 0;
 }
 
+// Rolling annualized volatility: sample std of the trailing `window` daily
+// returns, scaled by √252. Points before a full window are null (not enough data).
+export function rollingVol(rets: number[], window = 30): (number | null)[] {
+  return rets.map((_, i) => {
+    if (i < window - 1) return null;
+    const w = rets.slice(i - window + 1, i + 1).filter(x => isFinite(x));
+    if (w.length < 2) return null;
+    const m = w.reduce((a, b) => a + b, 0) / w.length;
+    const v = w.reduce((a, b) => a + (b - m) ** 2, 0) / (w.length - 1);
+    return Math.sqrt(v) * Math.sqrt(252);
+  });
+}
+
+// Full drawdown path: each point's distance below the running peak to date (<= 0).
+export function drawdownSeries(idx: number[]) {
+  const out: number[] = []; let peak = -Infinity;
+  for (const v of idx) { peak = Math.max(peak, v); out.push(peak > 0 ? v / peak - 1 : 0); }
+  return out;
+}
+
 // ---------- Risk ----------
 export function annVol(rets: number[]) {
   const r = rets.filter(x => isFinite(x));

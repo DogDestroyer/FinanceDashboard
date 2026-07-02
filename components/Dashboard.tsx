@@ -90,8 +90,9 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
   const asOfStr = asOf ? new Date(asOf).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" }) : null;
   const hasChart = !!view && view.idx.length >= 2;
 
+  // transition-colors so the tint fades over 1s when P&L flips sign on a refresh
   const P = ({ v, pct }: { v: number; pct: number }) => (
-    <span className={`num ${v >= 0 ? "text-gain" : "text-loss"}`}>
+    <span className={`num transition-colors duration-1000 ${v >= 0 ? "text-gain" : "text-loss"}`}>
       {v >= 0 ? "+" : "−"}{fmt(Math.abs(v))} ({(pct * 100).toFixed(2)}%)
     </span>
   );
