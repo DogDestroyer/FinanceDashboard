@@ -49,12 +49,13 @@ async function fxRates(ccys: string[]) {
 }
 
 export async function POST(req: NextRequest) {
-  const { symbols, currencies } = await req.json() as {
+  const { symbols, currencies, force } = await req.json() as {
     symbols: { symbol: string; assetClass: string; stooq?: string; coingeckoId?: string }[];
-    currencies: string[];
+    currencies: string[]; force?: boolean;
   };
   const ck = JSON.stringify({ symbols: symbols.map(s => s.symbol).sort(), currencies: [...currencies].sort() });
-  if (cache[ck] && Date.now() - cache[ck].t < CACHE_MS) return NextResponse.json(cache[ck].v);
+  // A manual refresh sends force:true to skip the cache read; the fresh result still repopulates the cache below.
+  if (!force && cache[ck] && Date.now() - cache[ck].t < CACHE_MS) return NextResponse.json(cache[ck].v);
 
   const cryptos = symbols.filter(s => s.assetClass === "Crypto");
   const listed = symbols.filter(s => s.assetClass !== "Crypto");

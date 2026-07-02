@@ -17,10 +17,10 @@ function Metric({ label, val, cls }: { label: string; val: string; cls: string }
   );
 }
 
-export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale }: {
+export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, onRefresh, refreshing }: {
   state: AppState; valued: Valued[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
-  hist: any; base: string; asOf: number | null; stale: boolean;
+  hist: any; base: string; asOf: number | null; stale: boolean; onRefresh: () => void; refreshing: boolean;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
   const [showAllMovers, setShowAllMovers] = useState(false);
@@ -99,10 +99,21 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
   return (
     <>
       <section aria-label="Net asset value">
-        <p className="text-fog text-xs uppercase tracking-widest">
-          Net asset value · {base}
-          {asOfStr && <span className="normal-case tracking-normal num"> · {stale ? "stale, last" : "as of"} {asOfStr}</span>}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-fog text-xs uppercase tracking-widest">
+            Net asset value · {base}
+            {asOfStr && <span className={`normal-case tracking-normal num ${refreshing ? "animate-pulse" : ""}`}> · {stale ? "stale, last" : "as of"} {asOfStr}</span>}
+          </p>
+          <button onClick={onRefresh} disabled={refreshing} aria-label="Refresh prices"
+            className="text-fog hover:text-brass disabled:opacity-50 shrink-0">
+            <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        </div>
         <p className={`num text-4xl font-medium mt-1 ${stale ? "text-fog" : ""}`}>{fmt(navUSD)}</p>
         {hasChart && (
           <div className="flex items-center gap-3 mt-1.5">

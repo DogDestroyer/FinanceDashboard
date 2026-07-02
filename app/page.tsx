@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { AppState, Quote, Tx, emptyState } from "@/lib/types";
 import { buildPositions, valuePositions, withWeights, toUSD, FxMap } from "@/lib/portfolio";
 import Dashboard from "@/components/Dashboard";
@@ -23,6 +23,9 @@ export default function App() {
   const [err, setErr] = useState("");
   const [asOf, setAsOf] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const histAt = useRef(0);
+  const lastManual = useRef(0);
 
   useEffect(() => { setPasscode(localStorage.getItem("passcode")); }, []);
 
@@ -57,38 +60,56 @@ export default function App() {
     return [...s];
   }, [state.transactions]);
 
-  // live quotes + fx, refresh every 60s
-  useEffect(() => {
-    if (!loaded) return;
-    let alive = true;
-    const pull = async () => {
-      try {
-        const r = await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbols, currencies }) });
-        const j = await r.json();
-        if (!alive) return;
-        const q: Record<string, Quote> = {};
-        for (const [k, v] of Object.entries<any>(j.quotes ?? {})) {
-          const pos = positions.find(p => p.symbol === k);
-          q[k] = { ...v, currency: v.currency === "TRADE" ? (pos?.currency ?? "USD") : v.currency };
-        }
-        setQuotes(q); setFx({ USD: 1, ...j.fx });
-        setAsOf(Date.now()); setStale(false); setErr("");
-      } catch { setStale(true); setErr("Price fetch failed. Retrying."); }
-    };
-    pull();
-    const id = setInterval(pull, 60_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [loaded, symbols, currencies, positions]);
+  // reusable quote pull; force:true bypasses the 60s server cache for a manual refresh
+  const refreshQuotes = useCallback(async (force = false) => {
+    try {
+      const r = await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols, currencies, force }) });
+      const j = await r.json();
+      const q: Record<string, Quote> = {};
+      for (const [k, v] of Object.entries<any>(j.quotes ?? {})) {
+        const pos = positions.find(p => p.symbol === k);
+        q[k] = { ...v, currency: v.currency === "TRADE" ? (pos?.currency ?? "USD") : v.currency };
+      }
+      setQuotes(q); setFx({ USD: 1, ...j.fx });
+      setAsOf(Date.now()); setStale(false); setErr("");
+    } catch { setStale(true); setErr("Price fetch failed. Retrying."); }
+  }, [symbols, currencies, positions]);
 
   // daily history for NAV chart + risk
-  useEffect(() => {
-    if (!loaded || !state.transactions.length) return;
+  const refreshHistory = useCallback(async () => {
+    if (!state.transactions.length) return;
     const from = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date))[0].date;
-    fetch("/api/history", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbols, currencies, from, benchmarkStooq: state.settings.benchmarkStooq }) })
-      .then(r => r.json()).then(setHist).catch(() => {});
-  }, [loaded, symbols, currencies, state.transactions, state.settings.benchmarkStooq]);
+    try {
+      const r = await fetch("/api/history", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols, currencies, from, benchmarkStooq: state.settings.benchmarkStooq }) });
+      setHist(await r.json()); histAt.current = Date.now();
+    } catch { /* keep last good history */ }
+  }, [symbols, currencies, state.transactions, state.settings.benchmarkStooq]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    refreshQuotes();
+    const id = setInterval(() => refreshQuotes(), 60_000);
+    return () => clearInterval(id);
+  }, [loaded, refreshQuotes]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    refreshHistory();
+  }, [loaded, refreshHistory]);
+
+  // manual refresh: debounced to 5s (CoinGecko rate limits), pulls quotes now
+  // and history too if it is older than 15 minutes
+  const manualRefresh = useCallback(async () => {
+    if (refreshing || Date.now() - lastManual.current < 5000) return;
+    lastManual.current = Date.now();
+    setRefreshing(true);
+    try {
+      await refreshQuotes(true);
+      if (Date.now() - histAt.current > 15 * 60_000) await refreshHistory();
+    } finally { setRefreshing(false); }
+  }, [refreshing, refreshQuotes, refreshHistory]);
 
   const valuedRaw = useMemo(() => valuePositions(positions, quotes, fx), [positions, quotes, fx]);
   const cashUSD = useMemo(() => Object.entries(cash).reduce((a, [c, amt]) => a + toUSD(amt, c as any, fx), 0), [cash, fx]);
@@ -124,7 +145,8 @@ export default function App() {
 
       <main className="flex-1 px-4 space-y-4 pt-2">
         {tab === "Book" && <Dashboard state={state} valued={valued} cash={cash} cashUSD={cashUSD}
-          navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale} />}
+          navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale}
+          onRefresh={manualRefresh} refreshing={refreshing} />}
         {tab === "Holdings" && <Holdings valued={valued} fmt={fmt} txs={state.transactions} onDelete={delTx} onEdit={openTx} />}
         {tab === "Risk" && <Risk valued={valued} cash={cash} cashUSD={cashUSD} navUSD={navUSD} fx={fx} hist={hist} state={state} />}
         {tab === "Attribution" && <Attribution valued={valued} navUSD={navUSD} fmt={fmt} />}
