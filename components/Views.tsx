@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { AppState, JournalEntry, Tx } from "@/lib/types";
 import { Valued, FxMap, annVol, beta, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries } from "@/lib/portfolio";
 
@@ -12,6 +12,7 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
 }) {
   const [sort, setSort] = useState<keyof Valued>("weight");
   const [showTxs, setShowTxs] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const rows = useMemo(() => [...valued].filter(v => v.qty > 1e-9)
     .sort((a, b) => (b[sort] as number) - (a[sort] as number)), [valued, sort]);
   const H = ({ k, label }: { k: keyof Valued; label: string }) => (
@@ -33,22 +34,44 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
           <tbody className="num">
             {rows.map(v => {
               const cost = v.costBasis / (v.qty || 1);
+              const open = expanded === v.symbol;
+              const symTxs = txs.filter(t => t.symbol === v.symbol).sort((a, b) => b.date.localeCompare(a.date));
               return (
-                <tr key={v.symbol} className="hair">
-                  <td className="py-2">
-                    <span className="font-medium text-paper">{v.symbol}</span>
-                    <span className="block text-fog text-[10px]">{v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ {cost.toFixed(2)} {v.currency}</span>
-                  </td>
-                  <td className="text-right">{(v.weight * 100).toFixed(1)}%</td>
-                  <td className="text-right">{fmt(v.mvUSD)}</td>
-                  <td className={`text-right ${v.unrealizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.unrealizedUSD)}</td>
-                  <td className={`text-right ${v.realizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.realizedUSD)}</td>
-                </tr>
+                <Fragment key={v.symbol}>
+                  <tr className="hair cursor-pointer" onClick={() => setExpanded(open ? null : v.symbol)}>
+                    <td className="py-2">
+                      <span className="font-medium text-paper"><span className="text-fog">{open ? "▾" : "▸"}</span> {v.symbol}</span>
+                      <span className="block text-fog text-[10px]">{v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ {cost.toFixed(2)} {v.currency}</span>
+                    </td>
+                    <td className="text-right">{(v.weight * 100).toFixed(1)}%</td>
+                    <td className="text-right">{fmt(v.mvUSD)}</td>
+                    <td className={`text-right ${v.unrealizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.unrealizedUSD)}</td>
+                    <td className={`text-right ${v.realizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.realizedUSD)}</td>
+                  </tr>
+                  {open && (
+                    <tr className="bg-ink/40">
+                      <td colSpan={5} className="pb-2">
+                        <div className="space-y-1.5 px-1 pt-1">
+                          {symTxs.map(t => (
+                            <div key={t.id} className="flex items-center gap-2 text-[11px]">
+                              <span className="text-fog w-[72px] shrink-0">{t.date}</span>
+                              <span className="font-medium shrink-0">{t.type}</span>
+                              <span className="text-fog truncate">{t.qty} @ {t.price} {t.currency}</span>
+                              <button onClick={e => { e.stopPropagation(); onEdit(t); }} className="ml-auto text-brass shrink-0 px-1">Edit</button>
+                            </div>
+                          ))}
+                          {symTxs.length === 0 && <span className="text-fog text-[11px]">No transactions for this symbol.</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
         </table>
         {rows.length === 0 && <p className="text-fog text-xs py-4 text-center">No open positions. Tap + Trade to log your first buy.</p>}
+        {rows.length > 0 && <p className="text-fog text-[10px] mt-2">Tap a position to see and edit its transactions.</p>}
       </div>
       <button onClick={() => setShowTxs(!showTxs)} className="text-xs text-fog underline underline-offset-2">
         {showTxs ? "Hide" : "Show"} transaction log ({txs.length})
@@ -56,14 +79,16 @@ export function Holdings({ valued, fmt, txs, onDelete, onEdit }: {
       {showTxs && (
         <div className="card space-y-2 text-xs num">
           {[...txs].sort((a, b) => b.date.localeCompare(a.date)).map(t => (
-            <div key={t.id} className="flex gap-2 items-center hair pt-2 first:border-0 first:pt-0">
-              <span className="text-fog">{t.date}</span>
-              <span className="font-medium">{t.type} {t.symbol}</span>
-              <span className="text-fog">{t.qty} @ {t.price} {t.currency}</span>
-              <div className="ml-auto flex gap-3">
-                <button onClick={() => onEdit(t)} className="text-brass">Edit</button>
-                <button onClick={() => onDelete(t.id)} className="text-loss">Delete</button>
+            <div key={t.id} className="hair pt-2 first:border-0 first:pt-0">
+              <div className="flex items-center gap-2">
+                <span className="text-fog shrink-0">{t.date}</span>
+                <span className="font-medium truncate">{t.type} {t.symbol}</span>
+                <div className="ml-auto flex gap-3 shrink-0">
+                  <button onClick={() => onEdit(t)} className="text-brass">Edit</button>
+                  <button onClick={() => onDelete(t.id)} className="text-loss">Delete</button>
+                </div>
               </div>
+              <span className="block text-fog text-[11px] mt-0.5">{t.qty} @ {t.price} {t.currency}</span>
             </div>
           ))}
         </div>
