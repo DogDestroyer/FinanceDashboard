@@ -1,12 +1,16 @@
 "use client";
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { AppState } from "@/lib/types";
 import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD, rebase, totalReturn, currentDrawdown } from "@/lib/portfolio";
-import { Donut, LineChart, Sparkline } from "./Charts";
+import { Donut, Sparkline } from "./Charts";
+import type { TSSeries } from "./TSChart";
 
+const TSChart = dynamic(() => import("./TSChart"), { ssr: false, loading: () => <div className="h-[216px]" /> });
 const moveCol = (x: number) => x > 1e-9 ? "text-gain" : x < -1e-9 ? "text-loss" : "text-fog";
 const PERIODS: [string, number][] = [["1M", 30], ["3M", 91], ["6M", 182], ["1Y", 365], ["All", Infinity]];
 const signedPct = (x: number, unit = "%") => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}${unit}`;
+const idxFmt = (v: number) => v.toFixed(2);
 
 function Metric({ label, val, cls }: { label: string; val: string; cls: string }) {
   return (
@@ -87,6 +91,13 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
     return { periodRet, benchRet, activeRet: benchRet === null ? null : periodRet - benchRet, curDD: currentDrawdown(view.idx) };
   }, [view]);
 
+  const navSeries: TSSeries[] = useMemo(() => {
+    if (!view || view.idx.length < 2) return [];
+    const s: TSSeries[] = [{ data: view.labels.map((t, i) => ({ time: t, value: view.idx[i] })), color: "#D9A441", label: "Portfolio", kind: "line" }];
+    if (view.bIdx) s.push({ data: view.labels.map((t, i) => ({ time: t, value: view.bIdx![i] })), color: "#8A94AC", label: state.settings.benchmark, kind: "line", dashed: true });
+    return s;
+  }, [view, state.settings.benchmark]);
+
   const asOfStr = asOf ? new Date(asOf).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" }) : null;
   const hasChart = !!view && view.idx.length >= 2;
 
@@ -162,7 +173,7 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
         </div>
         <p className="text-[11px] text-fog mb-2">Time-weighted return, both lines re-indexed to 100 at the period start. Deposits and withdrawals don't move this line, only investment performance does.</p>
         {hasChart
-          ? <LineChart labels={view!.labels} a={view!.idx} b={view!.bIdx} aName="Portfolio (TWR)" bName={state.settings.benchmark} />
+          ? <TSChart series={navSeries} height={200} valueFmt={idxFmt} spreadLabel="active" />
           : <p className="text-fog text-xs py-6 text-center">The NAV chart appears once you have dated transactions and price history.</p>}
         {stats && (
           <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge text-center">

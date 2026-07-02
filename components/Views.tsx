@@ -2,9 +2,13 @@
 import { Fragment, useMemo, useState } from "react";
 import { AppState, JournalEntry, Tx } from "@/lib/types";
 import { Valued, FxMap, annVol, beta, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries, rollingVol, drawdownSeries } from "@/lib/portfolio";
-import { Sparkline, SeriesChart } from "./Charts";
+import { Sparkline } from "./Charts";
+import dynamic from "next/dynamic";
+import type { TSSeries } from "./TSChart";
 
+const TSChart = dynamic(() => import("./TSChart"), { ssr: false, loading: () => <div className="h-[196px]" /> });
 const pct = (x: number | null, dp = 1) => x === null ? "—" : `${(x * 100).toFixed(dp)}%`;
+const pctFmt = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 /* ---------------- Holdings ---------------- */
 export function Holdings({ valued, fmt, txs, hist, onDelete, onEdit }: {
@@ -123,11 +127,19 @@ export function Risk({ valued, cash, cashUSD, navUSD, fx, hist, state }: {
       let last = 0; const closes = dates.slice(start).map(d => (last = bMap[d] ?? last));
       b = beta(pr, dailyReturns(closes.map(c => c || 1)));
     }
-    return { vol: annVol(pr), mdd: maxDrawdown(idx), beta: b, obs: pr.length, idx, rets: pr };
+    return { vol: annVol(pr), mdd: maxDrawdown(idx), beta: b, obs: pr.length, idx, rets: pr, dates: dates.slice(start) };
   }, [hist, state.transactions]);
 
-  const riskSeries = useMemo(() =>
-    stats ? { vol: rollingVol(stats.rets, 30), dd: drawdownSeries(stats.idx) } : null, [stats]);
+  const riskCharts = useMemo(() => {
+    if (!stats) return null;
+    const d = stats.dates;
+    const dd: TSSeries[] = [{ data: drawdownSeries(stats.idx).map((v, i) => ({ time: d[i], value: v })), color: "#E0596B", label: "drawdown", kind: "area", areaOpacity: 0.15 }];
+    const volData = rollingVol(stats.rets, 30)
+      .map((v, i) => v == null ? null : { time: d[i + 1], value: v })
+      .filter(Boolean) as { time: string; value: number }[];
+    const vol: TSSeries[] = [{ data: volData, color: "#D9A441", label: "30d vol", kind: "line" }];
+    return { dd, vol, volCount: volData.length };
+  }, [stats]);
 
   const ccyExposure = useMemo(() => {
     const m: Record<string, number> = {};
@@ -159,18 +171,18 @@ export function Risk({ valued, cash, cashUSD, navUSD, fx, hist, state }: {
         <Stat label="Top-10 concentration" value={pct(top10)}
           note="Weight in your 10 largest positions. Institutional books flag anything north of ~40%." />
       </div>
-      {riskSeries && (
+      {riskCharts && riskCharts.volCount >= 2 && (
         <div className="card">
           <h2 className="text-sm font-semibold mb-1">Rolling volatility, 30 day</h2>
           <p className="text-[11px] text-fog mb-2">Annualized standard deviation of the trailing 30 days of daily TWR. A rising line means the book is getting choppier, independent of direction.</p>
-          <SeriesChart data={riskSeries.vol} color="#D9A441" label="30-day annualized vol" />
+          <TSChart series={riskCharts.vol} height={180} valueFmt={pctFmt} />
         </div>
       )}
-      {riskSeries && (
+      {riskCharts && stats && stats.idx.length >= 2 && (
         <div className="card">
           <h2 className="text-sm font-semibold mb-1">Drawdown</h2>
           <p className="text-[11px] text-fog mb-2">Distance of the TWR index below its running peak. Flat at zero means you are at a high-water mark; the troughs are what you had to sit through.</p>
-          <SeriesChart data={riskSeries.dd} color="#E0596B" fill label="TWR below running peak" />
+          <TSChart series={riskCharts.dd} height={180} valueFmt={pctFmt} />
         </div>
       )}
       <div className="card">
