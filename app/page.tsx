@@ -168,7 +168,7 @@ export default function App() {
           {tab === "Book" && <Dashboard state={state} valued={valued} positions={positions} cash={cash} cashUSD={cashUSD}
             navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale}
             loaded={loaded} onRefresh={manualRefresh} refreshing={refreshing} onAddTrade={() => openTx()} indexQuotes={indexQuotes} />}
-          {tab === "Holdings" && <Holdings valued={valued} fmt={fmt} txs={state.transactions} hist={hist} onDelete={delTx} onEdit={openTx} onAddTrade={() => openTx()} />}
+          {tab === "Holdings" && <Holdings valued={valued} positions={positions} fx={fx} fmt={fmt} txs={state.transactions} hist={hist} onDelete={delTx} onEdit={openTx} onAddTrade={() => openTx()} />}
           {tab === "Risk" && <Risk valued={valued} cash={cash} cashUSD={cashUSD} navUSD={navUSD} fx={fx} hist={hist} state={state} onAddTrade={() => openTx()} />}
           {tab === "Attribution" && <Attribution valued={valued} navUSD={navUSD} fmt={fmt} onAddTrade={() => openTx()} />}
           {tab === "Rebalance" && <Rebalance valued={valued} cashUSD={cashUSD} navUSD={navUSD}

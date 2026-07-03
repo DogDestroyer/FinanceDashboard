@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
 import { AppState, JournalEntry, Tx } from "@/lib/types";
-import { Valued, FxMap, annVol, beta, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries, rollingVol, drawdownSeries } from "@/lib/portfolio";
+import { Valued, Position, FxMap, annVol, beta, bookSummary, contributions, dailyReturns, drift, maxDrawdown, navHistory, toUSD, twrSeries, rollingVol, drawdownSeries } from "@/lib/portfolio";
 import { Sparkline } from "./Charts";
 import { EmptyState } from "./UI";
 import dynamic from "next/dynamic";
@@ -12,31 +12,57 @@ const pct = (x: number | null, dp = 1) => x === null ? "–" : `${(x * 100).toFi
 const pctFmt = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 /* ---------------- Holdings ---------------- */
-export function Holdings({ valued, fmt, txs, hist, onDelete, onEdit, onAddTrade }: {
-  valued: Valued[]; fmt: (usd: number, dp?: number) => string; txs: Tx[]; hist: any;
-  onDelete: (id: string) => void; onEdit: (tx: Tx) => void; onAddTrade: () => void;
+export function Holdings({ valued, positions, fx, fmt, txs, hist, onDelete, onEdit, onAddTrade }: {
+  valued: Valued[]; positions: Position[]; fx: FxMap; fmt: (usd: number, dp?: number) => string;
+  txs: Tx[]; hist: any; onDelete: (id: string) => void; onEdit: (tx: Tx) => void; onAddTrade: () => void;
 }) {
   const [sort, setSort] = useState<keyof Valued>("weight");
   const [showTxs, setShowTxs] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const rows = useMemo(() => [...valued].filter(v => v.qty > 1e-9)
     .sort((a, b) => (b[sort] as number) - (a[sort] as number)), [valued, sort]);
+  const sum = useMemo(() => bookSummary(valued, positions, txs, 0, 0, fx), [valued, positions, txs, fx]);
+  const totalPnlPct = sum.costDeployedUSD > 1e-9 ? sum.totalPnlUSD / sum.costDeployedUSD : null;
+
+  const signed = (usd: number) => `${usd >= 0 ? "+" : "−"}${fmt(Math.abs(usd))}`;
+  const col = (x: number) => x > 1e-9 ? "text-gain" : x < -1e-9 ? "text-loss" : "text-fog";
+  const retStr = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`;
   const H = ({ k, label }: { k: keyof Valued; label: string }) => (
-    <button onClick={() => setSort(k)} className={`text-left ${sort === k ? "text-brass" : "text-fog"}`}>{label}{sort === k ? " ↓" : ""}</button>
+    <button onClick={() => setSort(k)} className={sort === k ? "text-brass" : "text-fog"}>{label}{sort === k ? " ↓" : ""}</button>
   );
+  const D = ({ label, val, cls = "text-paper" }: { label: string; val: string; cls?: string }) => (
+    <div><p className="t-label">{label}</p><p className={`num text-[13px] mt-0.5 ${cls}`}>{val}</p></div>
+  );
+
   if (!txs.length) return <EmptyState text="No holdings yet. Log a trade and your positions appear here." actionLabel="+ Trade" onAction={onAddTrade} />;
   return (
     <>
-      <div className="card overflow-x-auto">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-1">
+        <div>
+          <p className="t-label">Holdings value</p>
+          <p className="t-value">{fmt(sum.holdingsUSD)}</p>
+          <p className="t-caption mt-0.5">{rows.length} open position{rows.length === 1 ? "" : "s"}</p>
+        </div>
+        <div>
+          <p className="t-label">Total P&amp;L</p>
+          <p className={`t-value ${col(sum.totalPnlUSD)}`}>{signed(sum.totalPnlUSD)}{totalPnlPct != null && <span className="text-xs opacity-60"> {retStr(totalPnlPct)}</span>}</p>
+          <p className="t-caption mt-0.5">
+            <span className={col(sum.unrealizedUSD)}>Unrl {signed(sum.unrealizedUSD)}</span>
+            <span className="text-fog"> · </span>
+            <span className={col(sum.realizedUSD)}>Rlzd {signed(sum.realizedUSD)}</span>
+            {Math.abs(sum.dividendsUSD) > 0.01 && <><span className="text-fog"> · </span><span className={col(sum.dividendsUSD)}>Div {signed(sum.dividendsUSD)}</span></>}
+          </p>
+        </div>
+      </div>
+
+      <div className="card">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wide">
+            <tr className="t-label">
               <th className="text-left pb-2"><H k="symbol" label="Position" /></th>
-              <th className="text-left pb-2 font-normal text-fog">Trend</th>
               <th className="text-right pb-2"><H k="weight" label="Wt" /></th>
               <th className="text-right pb-2"><H k="mvUSD" label="Value" /></th>
-              <th className="text-right pb-2"><H k="unrealizedUSD" label="Unrl P&L" /></th>
-              <th className="text-right pb-2"><H k="realizedUSD" label="Rlzd" /></th>
+              <th className="text-right pb-2"><H k="totalRet" label="Ret %" /></th>
             </tr>
           </thead>
           <tbody className="num">
@@ -47,29 +73,40 @@ export function Holdings({ valued, fmt, txs, hist, onDelete, onEdit, onAddTrade 
               return (
                 <Fragment key={v.symbol}>
                   <tr className="hair cursor-pointer" onClick={() => setExpanded(open ? null : v.symbol)}>
-                    <td className="py-2">
+                    <td className="py-2 pr-2">
                       <span className="font-medium text-paper"><span className="text-fog">{open ? "▾" : "▸"}</span> {v.symbol}</span>
-                      <span className="block text-fog text-[10px]">{v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ {cost.toFixed(2)} {v.currency}</span>
+                      <span className="block text-fog text-[10px] truncate">{v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ {cost.toFixed(2)} {v.currency}</span>
                     </td>
-                    <td className="py-2"><Sparkline data={hist?.series?.[v.symbol]?.closes?.slice(-30) ?? []} width={60} height={20} /></td>
                     <td className="text-right">{(v.weight * 100).toFixed(1)}%</td>
                     <td className="text-right">{fmt(v.mvUSD)}</td>
-                    <td className={`text-right ${v.unrealizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.unrealizedUSD)}</td>
-                    <td className={`text-right ${v.realizedUSD >= 0 ? "text-gain" : "text-loss"}`}>{fmt(v.realizedUSD)}</td>
+                    <td className={`text-right ${col(v.totalRet)}`}>{retStr(v.totalRet)}</td>
                   </tr>
                   {open && (
                     <tr className="bg-ink/40">
-                      <td colSpan={6} className="pb-2">
-                        <div className="space-y-1.5 px-1 pt-1">
-                          {symTxs.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 text-[11px]">
-                              <span className="text-fog w-[72px] shrink-0">{t.date}</span>
-                              <span className="font-medium shrink-0">{t.type}</span>
-                              <span className="text-fog truncate">{t.qty} @ {t.price} {t.currency}</span>
-                              <button onClick={e => { e.stopPropagation(); onEdit(t); }} className="ml-auto text-brass shrink-0 px-1">Edit</button>
+                      <td colSpan={4} className="pb-3">
+                        <div className="px-1 pt-2 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <div className="grid grid-cols-3 gap-x-4 gap-y-2 flex-1">
+                              <D label="Quantity" val={v.qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} />
+                              <D label="Avg cost" val={`${cost.toFixed(2)} ${v.currency}`} />
+                              <D label="Value" val={fmt(v.mvUSD)} />
+                              <D label="Unrealized" val={signed(v.unrealizedUSD)} cls={col(v.unrealizedUSD)} />
+                              <D label="Realized" val={signed(v.realizedUSD)} cls={col(v.realizedUSD)} />
+                              <D label="Dividends" val={fmt(v.dividendsUSD)} cls={col(v.dividendsUSD)} />
                             </div>
-                          ))}
-                          {symTxs.length === 0 && <span className="text-fog text-[11px]">No transactions for this symbol.</span>}
+                            <Sparkline data={hist?.series?.[v.symbol]?.closes?.slice(-30) ?? []} width={60} height={30} />
+                          </div>
+                          <div className="space-y-1.5">
+                            {symTxs.map(t => (
+                              <div key={t.id} className="flex items-center gap-2 text-[11px]">
+                                <span className="text-fog w-[72px] shrink-0">{t.date}</span>
+                                <span className="font-medium shrink-0">{t.type}</span>
+                                <span className="text-fog truncate">{t.qty} @ {t.price} {t.currency}</span>
+                                <button onClick={e => { e.stopPropagation(); onEdit(t); }} className="press ml-auto text-brass shrink-0 px-1">Edit</button>
+                              </div>
+                            ))}
+                            {symTxs.length === 0 && <span className="text-fog text-[11px]">No transactions for this symbol.</span>}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -80,7 +117,10 @@ export function Holdings({ valued, fmt, txs, hist, onDelete, onEdit, onAddTrade 
           </tbody>
         </table>
         {rows.length === 0 && <p className="t-caption py-4 text-center">No open positions. All trades are closed; the log is below.</p>}
-        {rows.length > 0 && <p className="t-caption mt-2">Tap a position to see and edit its transactions.</p>}
+        {rows.length > 0 && <>
+          <p className="t-caption mt-2">Tap a position for its detail and transactions.</p>
+          <p className="t-caption mt-1">Return is total gain on capital deployed per position, not annualized.</p>
+        </>}
       </div>
       <button onClick={() => setShowTxs(!showTxs)} className="press text-xs text-fog hover:text-paper underline underline-offset-2">
         {showTxs ? "Hide" : "Show"} transaction log ({txs.length})

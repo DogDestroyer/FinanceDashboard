@@ -10,9 +10,10 @@ export const usdTo = (usd: number, ccy: Ccy, fx: FxMap) => usd / (fx[ccy] ?? 1);
 export interface Lot { qty: number; price: number; date: string; }
 export interface Position {
   symbol: string; name: string; assetClass: AssetClass; currency: Ccy; geo: string;
-  qty: number; costBasis: number;          // trade ccy, remaining lots incl. fees
+  qty: number; costBasis: number;          // trade ccy, remaining open lots incl. fees
   realizedPnl: number;                     // trade ccy
   dividends: number;                       // trade ccy
+  costOfClosed: number;                    // trade ccy, cost basis of lots already sold (FIFO)
   stooq?: string; coingeckoId?: string;
 }
 
@@ -30,7 +31,7 @@ export function buildPositions(txs: Tx[]): { positions: Position[]; cash: Record
     const key = t.symbol.toUpperCase();
     if (!pos[key]) {
       pos[key] = { symbol: key, name: t.name || key, assetClass: t.assetClass, currency: t.currency,
-        geo: t.geo || "Global", qty: 0, costBasis: 0, realizedPnl: 0, dividends: 0,
+        geo: t.geo || "Global", qty: 0, costBasis: 0, realizedPnl: 0, dividends: 0, costOfClosed: 0,
         stooq: t.stooq, coingeckoId: t.coingeckoId };
       lots[key] = [];
     }
@@ -58,6 +59,7 @@ export function buildPositions(txs: Tx[]): { positions: Position[]; cash: Record
       }
       p.qty -= t.qty; p.costBasis -= costOut;
       p.realizedPnl += proceeds - costOut;
+      p.costOfClosed += costOut;
       bump(t.currency, proceeds);
     }
   }
@@ -68,6 +70,9 @@ export function buildPositions(txs: Tx[]): { positions: Position[]; cash: Record
 export interface Valued extends Position {
   price: number; prevClose: number;
   mvUSD: number; dayPnlUSD: number; unrealizedUSD: number; realizedUSD: number;
+  dividendsUSD: number;                    // dividends received for this symbol, USD
+  costDeployedUSD: number;                 // open-lot cost + cost of sold lots, USD
+  totalRet: number;                        // money-on-money return: (unr+rlz+div) / cost deployed
   weight: number; // of NAV
 }
 
@@ -75,11 +80,15 @@ export function valuePositions(positions: Position[], quotes: Record<string, Quo
   const valued: Valued[] = positions.filter(p => p.qty > 1e-9).map(p => {
     const q = quotes[p.symbol] || { price: 0, prevClose: 0, currency: p.currency, symbol: p.symbol };
     const mv = p.qty * q.price, prevMv = p.qty * q.prevClose;
+    const unrealizedUSD = toUSD(mv - p.costBasis, p.currency, fx);
+    const realizedUSD = toUSD(p.realizedPnl, p.currency, fx);
+    const dividendsUSD = toUSD(p.dividends, p.currency, fx);
+    const costDeployedUSD = toUSD(p.costBasis + p.costOfClosed, p.currency, fx);
     return { ...p, price: q.price, prevClose: q.prevClose,
       mvUSD: toUSD(mv, p.currency, fx),
       dayPnlUSD: toUSD(mv - prevMv, p.currency, fx),
-      unrealizedUSD: toUSD(mv - p.costBasis, p.currency, fx),
-      realizedUSD: toUSD(p.realizedPnl, p.currency, fx),
+      unrealizedUSD, realizedUSD, dividendsUSD, costDeployedUSD,
+      totalRet: costDeployedUSD > 1e-9 ? (unrealizedUSD + realizedUSD + dividendsUSD) / costDeployedUSD : 0,
       weight: 0 };
   });
   return valued;
@@ -270,7 +279,7 @@ export function xirr(cashflows: { date: string; amount: number }[]): number | nu
 
 // ---------- Book summary (balance sheet + P&L attribution) ----------
 export interface BookSummary {
-  holdingsUSD: number; deployedUSD: number; cashUSD: number; netInvestedUSD: number;
+  holdingsUSD: number; deployedUSD: number; costDeployedUSD: number; cashUSD: number; netInvestedUSD: number;
   dayPnlUSD: number; unrealizedUSD: number; realizedUSD: number; dividendsUSD: number;
   totalPnlUSD: number;
   unrealizedReturn: number | null;      // unrealized / deployed (cost basis of open lots)
@@ -300,6 +309,8 @@ export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
   const holdingsUSD = valued.reduce((a, v) => a + v.mvUSD, 0);
   // deployed = cost basis of open lots = money currently at work in the market
   const deployedUSD = valued.reduce((a, v) => a + toUSD(v.costBasis, v.currency, fx), 0);
+  // total capital deployed including the cost of lots already sold (for money-on-money return)
+  const costDeployedUSD = positions.reduce((a, p) => a + toUSD(p.costBasis + p.costOfClosed, p.currency, fx), 0);
   const dayPnlUSD = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
   const unrealizedUSD = valued.reduce((a, v) => a + v.unrealizedUSD, 0);
   const realizedUSD = positions.reduce((a, p) => a + toUSD(p.realizedPnl, p.currency, fx), 0);
@@ -311,7 +322,7 @@ export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
   const unrealizedReturn = deployedUSD > 1e-9 ? unrealizedUSD / deployedUSD : null;
   const totalReturnOnCapital = netInvestedUSD > 1e-9 ? totalPnlUSD / netInvestedUSD : null;
   const simpleTotalReturn = netInvestedUSD > 1e-9 ? (navUSD - netInvestedUSD) / netInvestedUSD : null;
-  return { holdingsUSD, deployedUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
+  return { holdingsUSD, deployedUSD, costDeployedUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
     totalPnlUSD, unrealizedReturn, totalReturnOnCapital, simpleTotalReturn };
 }
 
