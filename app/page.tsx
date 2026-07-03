@@ -70,8 +70,9 @@ export default function App() {
     // is always fetched so the Portfolio chip can show its delta versus it
     const keys = state.settings.compareIndices ?? DEFAULT_INDICES;
     const extra = INDICES.filter(i => keys.includes(i.key)).map(i => ({ symbol: i.symbol, stooq: i.stooq }));
-    if (!extra.some(e => e.symbol.toUpperCase() === state.settings.benchmark.toUpperCase()))
-      extra.push({ symbol: state.settings.benchmark, stooq: state.settings.benchmarkStooq });
+    // always fetch the S&P 500, the strip's comparison for the Portfolio chip
+    const spy = INDICES.find(i => i.key === "SPY")!;
+    if (!extra.some(e => e.symbol === spy.symbol)) extra.push({ symbol: spy.symbol, stooq: spy.stooq });
     try {
       const r = await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbols, currencies, force, extra }) });
@@ -84,7 +85,7 @@ export default function App() {
       setQuotes(q); setFx({ USD: 1, ...j.fx }); setIndexQuotes(j.extra ?? {});
       setAsOf(Date.now()); setStale(false); setErr("");
     } catch { setStale(true); setErr("Price fetch failed. Retrying."); }
-  }, [symbols, currencies, positions, state.settings.compareIndices, state.settings.benchmark, state.settings.benchmarkStooq]);
+  }, [symbols, currencies, positions, state.settings.compareIndices]);
 
   // daily history for NAV chart + risk
   const refreshHistory = useCallback(async () => {

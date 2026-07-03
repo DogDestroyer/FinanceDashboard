@@ -60,17 +60,19 @@ export default function Settings({ settings, appState, onSave, onClose }: {
         </div>
 
         <p className="t-label mb-1.5">Comparison indices</p>
-        <p className="t-caption mb-2">Shown on the Book tab market strip. Portfolio and your benchmark always appear.</p>
+        <p className="t-caption mb-2">Shown on the Book tab market strip. Portfolio and the S&amp;P 500 always appear.</p>
         <div className="grid grid-cols-2 gap-2 mb-5">
           {INDICES.map(ix => {
-            const on = compare.includes(ix.key);
+            const isPinned = ix.key === "SPY";
+            const on = isPinned || compare.includes(ix.key);
             return (
-              <button key={ix.key} onClick={() => toggle(ix.key)}
-                className={`press flex items-center gap-2 rounded-xl py-2 px-2.5 border text-left ${on ? "border-brass/60" : "border-edge/60"}`}>
+              <button key={ix.key} disabled={isPinned} onClick={() => !isPinned && toggle(ix.key)}
+                className={`press flex items-center gap-2 rounded-xl py-2 px-2.5 border text-left ${on ? "border-brass/60" : "border-edge/60"} ${isPinned ? "opacity-70" : ""}`}>
                 <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${on ? "bg-brass border-brass" : "border-edge"}`}>
                   {on && <svg className="w-3 h-3 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
                 </span>
                 <span className="text-[11px] text-paper truncate">{ix.name}</span>
+                {isPinned && <span className="ml-auto text-[9px] text-fog uppercase shrink-0">always</span>}
               </button>
             );
           })}
