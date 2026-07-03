@@ -270,7 +270,7 @@ export function xirr(cashflows: { date: string; amount: number }[]): number | nu
 
 // ---------- Book summary (balance sheet + P&L attribution) ----------
 export interface BookSummary {
-  holdingsUSD: number; cashUSD: number; netInvestedUSD: number;
+  holdingsUSD: number; deployedUSD: number; cashUSD: number; netInvestedUSD: number;
   dayPnlUSD: number; unrealizedUSD: number; realizedUSD: number; dividendsUSD: number;
   totalPnlUSD: number;
   totalReturnOnCapital: number | null;  // totalPnl / net invested capital
@@ -297,6 +297,8 @@ export function netInvested(txs: Tx[], fx: FxMap): number {
 export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
   cashUSD: number, navUSD: number, fx: FxMap): BookSummary {
   const holdingsUSD = valued.reduce((a, v) => a + v.mvUSD, 0);
+  // deployed = cost basis of open lots = money currently at work in the market
+  const deployedUSD = valued.reduce((a, v) => a + toUSD(v.costBasis, v.currency, fx), 0);
   const dayPnlUSD = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
   const unrealizedUSD = valued.reduce((a, v) => a + v.unrealizedUSD, 0);
   const realizedUSD = positions.reduce((a, p) => a + toUSD(p.realizedPnl, p.currency, fx), 0);
@@ -306,7 +308,7 @@ export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
   const totalPnlUSD = unrealizedUSD + realizedUSD + dividendsUSD;
   const totalReturnOnCapital = netInvestedUSD > 1e-9 ? totalPnlUSD / netInvestedUSD : null;
   const simpleTotalReturn = netInvestedUSD > 1e-9 ? (navUSD - netInvestedUSD) / netInvestedUSD : null;
-  return { holdingsUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
+  return { holdingsUSD, deployedUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
     totalPnlUSD, totalReturnOnCapital, simpleTotalReturn };
 }
 

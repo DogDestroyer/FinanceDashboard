@@ -127,13 +127,20 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
   const hasChart = !!view && view.idx.length >= 2;
 
   const signedMoney = (usd: number) => `${usd >= 0 ? "+" : "−"}${fmt(Math.abs(usd))}`;
-  // one summary cell: fog label, mono value, optional smaller secondary figure
-  const Cell = ({ label, val, cls = "text-paper", sub }: { label: string; val: string; cls?: string; sub?: string }) => (
+  // secondary balance-sheet cell: fog label over a mono value
+  const Cell = ({ label, val, cls = "text-paper", hint }: { label: string; val: string; cls?: string; hint?: string }) => (
     <div className="min-w-0">
       <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
-      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>
-        {val}{sub && <span className="text-xs text-fog"> {sub}</span>}
-      </p>
+      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>{val}</p>
+      {hint && <p className="text-fog text-[10px] mt-0.5 leading-tight">{hint}</p>}
+    </div>
+  );
+  // primary P&L cell: larger value with its percent stacked beneath, both tinted
+  const Hero = ({ label, val, pct, cls }: { label: string; val: string; pct: string; cls: string }) => (
+    <div className="min-w-0">
+      <p className="text-fog text-[10px] uppercase tracking-wide">{label}</p>
+      <p className={`num text-xl leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>{val}</p>
+      <p className={`num text-xs mt-0.5 transition-colors duration-1000 ${cls}`}>{pct}</p>
     </div>
   );
 
@@ -166,27 +173,36 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
             )}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-3">
-          <Cell label="Day P&L" val={signedMoney(summary.dayPnlUSD)} cls={moveCol(summary.dayPnlUSD)} sub={`(${(dayPct * 100).toFixed(2)}%)`} />
-          <Cell label="Total P&L" val={signedMoney(summary.totalPnlUSD)} cls={moveCol(summary.totalPnlUSD)}
-            sub={summary.totalReturnOnCapital != null ? `(${signedPct(summary.totalReturnOnCapital)})` : undefined} />
-          <Cell label="Cash" val={fmt(summary.cashUSD)} />
-          <Cell label="Holdings value" val={fmt(summary.holdingsUSD)} />
+        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-edge">
+          <Hero label="Day P&L" val={signedMoney(summary.dayPnlUSD)} cls={moveCol(summary.dayPnlUSD)}
+            pct={`${dayPct >= 0 ? "+" : "−"}${Math.abs(dayPct * 100).toFixed(2)}%`} />
+          <Hero label="Total P&L" val={signedMoney(summary.totalPnlUSD)} cls={moveCol(summary.totalPnlUSD)}
+            pct={summary.totalReturnOnCapital != null ? signedPct(summary.totalReturnOnCapital) : "—"} />
         </div>
-        <p className="text-[11px] text-fog mt-2">Return figures are measured against net contributed capital, not cost basis.</p>
-        <button onClick={() => setShowDetails(s => !s)} className="text-xs text-fog underline underline-offset-2 mt-2">
-          {showDetails ? "Hide details" : "Details"}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-4">
+          <Cell label="Deployed" val={fmt(summary.deployedUSD)} hint="in the market, at cost" />
+          <Cell label="Cash" val={fmt(summary.cashUSD)} hint="uninvested" />
+          <Cell label="Holdings value" val={fmt(summary.holdingsUSD)} hint="at today's prices" />
+          <Cell label="Contributed" val={fmt(summary.netInvestedUSD)} hint="deposits less withdrawals" />
+        </div>
+        <button onClick={() => setShowDetails(s => !s)}
+          className="flex items-center gap-1 text-xs text-fog hover:text-paper mt-4">
+          <svg className={`w-3 h-3 transition-transform ${showDetails ? "rotate-90" : ""}`} viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          {showDetails ? "Hide breakdown" : "P&L breakdown"}
         </button>
         {showDetails && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-2">
-            <Cell label="Net invested capital" val={fmt(summary.netInvestedUSD)} />
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3 pt-3 border-t border-edge">
             <Cell label="Unrealized P&L" val={signedMoney(summary.unrealizedUSD)} cls={moveCol(summary.unrealizedUSD)} />
             <Cell label="Realized P&L" val={signedMoney(summary.realizedUSD)} cls={moveCol(summary.realizedUSD)} />
             <Cell label="Dividends collected" val={fmt(summary.dividendsUSD)} cls={moveCol(summary.dividendsUSD)} />
-            <Cell label="Simple return (check)" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "—"}
-              cls={summary.simpleTotalReturn != null ? moveCol(summary.simpleTotalReturn) : "text-fog"} />
+            <Cell label="Simple return" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "—"}
+              cls={summary.simpleTotalReturn != null ? moveCol(summary.simpleTotalReturn) : "text-fog"} hint="cross-check" />
           </div>
         )}
+        <p className="text-[11px] text-fog mt-3 leading-snug">Total P&L percent is return on contributed capital (deposits less withdrawals), not on cost basis.</p>
       </section>
 
       <section className="card">
