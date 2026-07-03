@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { AppState, Quote, Tx, emptyState } from "@/lib/types";
 import { buildPositions, valuePositions, withWeights, toUSD, FxMap } from "@/lib/portfolio";
+import { INDICES, DEFAULT_INDICES } from "@/lib/indices";
 import Dashboard from "@/components/Dashboard";
 import { Holdings, Risk, Attribution, Rebalance, Journal } from "@/components/Views";
 import TxForm from "@/components/TxForm";
@@ -26,6 +27,7 @@ export default function App() {
   const [asOf, setAsOf] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [indexQuotes, setIndexQuotes] = useState<Record<string, { price: number; prevClose: number }>>({});
   const histAt = useRef(0);
   const lastManual = useRef(0);
 
@@ -64,19 +66,25 @@ export default function App() {
 
   // reusable quote pull; force:true bypasses the 60s server cache for a manual refresh
   const refreshQuotes = useCallback(async (force = false) => {
+    // display-only index proxies for the market comparison strip; the benchmark
+    // is always fetched so the Portfolio chip can show its delta versus it
+    const keys = state.settings.compareIndices ?? DEFAULT_INDICES;
+    const extra = INDICES.filter(i => keys.includes(i.key)).map(i => ({ symbol: i.symbol, stooq: i.stooq }));
+    if (!extra.some(e => e.symbol.toUpperCase() === state.settings.benchmark.toUpperCase()))
+      extra.push({ symbol: state.settings.benchmark, stooq: state.settings.benchmarkStooq });
     try {
       const r = await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbols, currencies, force }) });
+        body: JSON.stringify({ symbols, currencies, force, extra }) });
       const j = await r.json();
       const q: Record<string, Quote> = {};
       for (const [k, v] of Object.entries<any>(j.quotes ?? {})) {
         const pos = positions.find(p => p.symbol === k);
         q[k] = { ...v, currency: v.currency === "TRADE" ? (pos?.currency ?? "USD") : v.currency };
       }
-      setQuotes(q); setFx({ USD: 1, ...j.fx });
+      setQuotes(q); setFx({ USD: 1, ...j.fx }); setIndexQuotes(j.extra ?? {});
       setAsOf(Date.now()); setStale(false); setErr("");
     } catch { setStale(true); setErr("Price fetch failed. Retrying."); }
-  }, [symbols, currencies, positions]);
+  }, [symbols, currencies, positions, state.settings.compareIndices, state.settings.benchmark, state.settings.benchmarkStooq]);
 
   // daily history for NAV chart + risk
   const refreshHistory = useCallback(async () => {
@@ -158,7 +166,7 @@ export default function App() {
         <div key={tab} className="animate-fade space-y-3">
           {tab === "Book" && <Dashboard state={state} valued={valued} positions={positions} cash={cash} cashUSD={cashUSD}
             navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale}
-            loaded={loaded} onRefresh={manualRefresh} refreshing={refreshing} onAddTrade={() => openTx()} />}
+            loaded={loaded} onRefresh={manualRefresh} refreshing={refreshing} onAddTrade={() => openTx()} indexQuotes={indexQuotes} />}
           {tab === "Holdings" && <Holdings valued={valued} fmt={fmt} txs={state.transactions} hist={hist} onDelete={delTx} onEdit={openTx} onAddTrade={() => openTx()} />}
           {tab === "Risk" && <Risk valued={valued} cash={cash} cashUSD={cashUSD} navUSD={navUSD} fx={fx} hist={hist} state={state} onAddTrade={() => openTx()} />}
           {tab === "Attribution" && <Attribution valued={valued} navUSD={navUSD} fmt={fmt} onAddTrade={() => openTx()} />}

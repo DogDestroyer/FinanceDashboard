@@ -49,11 +49,14 @@ async function fxRates(ccys: string[]) {
 }
 
 export async function POST(req: NextRequest) {
-  const { symbols, currencies, force } = await req.json() as {
+  const { symbols, currencies, force, extra } = await req.json() as {
     symbols: { symbol: string; assetClass: string; stooq?: string; coingeckoId?: string }[];
     currencies: string[]; force?: boolean;
+    // display-only index proxies, kept out of portfolio quotes/FX/history
+    extra?: { symbol: string; stooq?: string }[];
   };
-  const ck = JSON.stringify({ symbols: symbols.map(s => s.symbol).sort(), currencies: [...currencies].sort() });
+  const ck = JSON.stringify({ symbols: symbols.map(s => s.symbol).sort(), currencies: [...currencies].sort(),
+    extra: (extra ?? []).map(e => e.symbol).sort() });
   // A manual refresh sends force:true to skip the cache read; the fresh result still repopulates the cache below.
   if (!force && cache[ck] && Date.now() - cache[ck].t < CACHE_MS) return NextResponse.json(cache[ck].v);
 
@@ -79,7 +82,15 @@ export async function POST(req: NextRequest) {
     if (q) quotes[s.symbol.toUpperCase()] = { symbol: s.symbol.toUpperCase(), ...q, currency: "TRADE" };
   }));
 
-  const v = { quotes, fx };
+  // index-proxy quotes, returned separately so they never enter portfolio math
+  const extraQuotes: Record<string, { price: number; prevClose: number }> = {};
+  await Promise.all((extra ?? []).map(async s => {
+    const fh = await finnhub(s.symbol.toUpperCase());
+    const q = fh ?? await stooqQuote(s.stooq || `${s.symbol.toLowerCase()}.us`);
+    if (q) extraQuotes[s.symbol.toUpperCase()] = { price: q.price, prevClose: q.prevClose };
+  }));
+
+  const v = { quotes, fx, extra: extraQuotes };
   cache[ck] = { t: Date.now(), v };
   return NextResponse.json(v);
 }

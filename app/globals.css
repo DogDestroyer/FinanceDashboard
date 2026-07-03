@@ -29,6 +29,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #D9A44166; outlin
 
 @layer utilities {
   .press { @apply transition-transform duration-150 ease-out active:scale-[0.98]; }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
   .animate-fade { animation: fade 120ms ease-out both; }
   .skeleton {
     background: linear-gradient(90deg, #151C2E 25%, #1F2942 37%, #151C2E 63%);

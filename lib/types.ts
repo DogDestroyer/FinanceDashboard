@@ -37,7 +37,7 @@ export interface AppState {
   journal: JournalEntry[];
   decisions: DecisionLog[];
   targets: Record<string, number>;   // symbol -> target weight %
-  settings: { benchmark: string; benchmarkStooq: string; base: "USD" | "SGD" };
+  settings: { benchmark: string; benchmarkStooq: string; base: "USD" | "SGD"; compareIndices?: string[] };
 }
 
 export interface Quote { symbol: string; price: number; prevClose: number; currency: Ccy; }
@@ -48,5 +48,5 @@ export const emptyState: AppState = {
   journal: [],
   decisions: [],
   targets: {},
-  settings: { benchmark: "ACWI", benchmarkStooq: "acwi.us", base: "SGD" }
+  settings: { benchmark: "ACWI", benchmarkStooq: "acwi.us", base: "SGD", compareIndices: ["ACWI", "SPY", "EWS"] }
 };

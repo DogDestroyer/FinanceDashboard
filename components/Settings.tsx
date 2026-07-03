@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { AppState } from "@/lib/types";
+import { INDICES, DEFAULT_INDICES } from "@/lib/indices";
 
 export default function Settings({ settings, appState, onSave, onClose }: {
   settings: AppState["settings"]; appState: AppState;
@@ -9,9 +10,11 @@ export default function Settings({ settings, appState, onSave, onClose }: {
   const [base, setBase] = useState(settings.base);
   const [benchmark, setBenchmark] = useState(settings.benchmark);
   const [benchmarkStooq, setBenchmarkStooq] = useState(settings.benchmarkStooq);
+  const [compare, setCompare] = useState<string[]>(settings.compareIndices ?? DEFAULT_INDICES);
+  const toggle = (k: string) => setCompare(c => c.includes(k) ? c.filter(x => x !== k) : [...c, k]);
 
   const save = () => {
-    onSave({ base, benchmark: benchmark.trim() || "ACWI", benchmarkStooq: benchmarkStooq.trim() || "acwi.us" });
+    onSave({ base, benchmark: benchmark.trim() || "ACWI", benchmarkStooq: benchmarkStooq.trim() || "acwi.us", compareIndices: compare });
     onClose();
   };
 
@@ -54,6 +57,23 @@ export default function Settings({ settings, appState, onSave, onClose }: {
             <input value={benchmarkStooq} onChange={e => setBenchmarkStooq(e.target.value)} placeholder="acwi.us" autoCapitalize="none" />
             <p className="t-caption mt-1">Stooq price symbol</p>
           </div>
+        </div>
+
+        <p className="t-label mb-1.5">Comparison indices</p>
+        <p className="t-caption mb-2">Shown on the Book tab market strip. Portfolio and your benchmark always appear.</p>
+        <div className="grid grid-cols-2 gap-2 mb-5">
+          {INDICES.map(ix => {
+            const on = compare.includes(ix.key);
+            return (
+              <button key={ix.key} onClick={() => toggle(ix.key)}
+                className={`press flex items-center gap-2 rounded-xl py-2 px-2.5 border text-left ${on ? "border-brass/60" : "border-edge/60"}`}>
+                <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${on ? "bg-brass border-brass" : "border-edge"}`}>
+                  {on && <svg className="w-3 h-3 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+                </span>
+                <span className="text-[11px] text-paper truncate">{ix.name}</span>
+              </button>
+            );
+          })}
         </div>
 
         <p className="t-label mb-1.5">Backup</p>

@@ -5,6 +5,7 @@ import { AppState } from "@/lib/types";
 import { Valued, Position, FxMap, groupWeights, navHistory, twrSeries, rebase, totalReturn, currentDrawdown, externalFlows, xirr, bookSummary } from "@/lib/portfolio";
 import { Donut, Sparkline } from "./Charts";
 import { EmptyState, Skeleton } from "./UI";
+import { INDICES, DEFAULT_INDICES } from "@/lib/indices";
 import type { TSSeries } from "./TSChart";
 
 const TSChart = dynamic(() => import("./TSChart"), { ssr: false, loading: () => <div className="h-[216px]" /> });
@@ -22,11 +23,12 @@ function Metric({ label, val, cls }: { label: string; val: string; cls: string }
   );
 }
 
-export default function Dashboard({ state, valued, positions, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, loaded, onRefresh, refreshing, onAddTrade }: {
+export default function Dashboard({ state, valued, positions, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, loaded, onRefresh, refreshing, onAddTrade, indexQuotes }: {
   state: AppState; valued: Valued[]; positions: Position[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
   hist: any; base: string; asOf: number | null; stale: boolean; loaded: boolean;
   onRefresh: () => void; refreshing: boolean; onAddTrade: () => void;
+  indexQuotes: Record<string, { price: number; prevClose: number }>;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
   const [showAllMovers, setShowAllMovers] = useState(false);
@@ -148,6 +150,27 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
       <p className={`num text-xs mt-1 transition-colors duration-[800ms] ${cls} opacity-60`}>{pct}</p>
     </div>
   );
+
+  // market comparison strip: day % of each index proxy vs the portfolio's day %
+  const chipPct = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(2)}%`;
+  const benchQ = indexQuotes[state.settings.benchmark.toUpperCase()];
+  const benchDay = benchQ && benchQ.prevClose ? benchQ.price / benchQ.prevClose - 1 : null;
+  const benchDelta = benchDay == null ? null : dayPct - benchDay;
+  const enabledKeys = state.settings.compareIndices ?? DEFAULT_INDICES;
+  const coreKeys = DEFAULT_INDICES.filter(k => enabledKeys.includes(k));
+  const extraKeys = INDICES.map(i => i.key).filter(k => enabledKeys.includes(k) && !DEFAULT_INDICES.includes(k));
+  const IndexChip = ({ k }: { k: string }) => {
+    const ix = INDICES.find(i => i.key === k);
+    if (!ix) return null;
+    const q = indexQuotes[ix.symbol];
+    const day = q && q.prevClose ? q.price / q.prevClose - 1 : null;
+    return (
+      <div className="snap-start shrink-0 w-[76px] rounded-xl border border-edge/60 px-2.5 py-2">
+        <p className="t-label truncate">{ix.label}</p>
+        <p className={`num text-sm mt-1 ${day == null ? "text-fog" : moveCol(day)}`}>{day == null ? "–" : chipPct(day)}</p>
+      </div>
+    );
+  };
 
   if (!loaded) return (
     <>
@@ -281,6 +304,24 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
             <p className="t-caption mt-3">TWR is what your strategy earned; XIRR is what your dollars earned. The gap is your deposit timing.</p>
           </>
         )}
+      </section>
+
+      <section aria-label="Market comparison">
+        <div className="flex items-stretch gap-2 overflow-x-auto no-scrollbar snap-x -mx-4 px-4">
+          <div className="snap-start shrink-0 w-[92px] rounded-xl border border-brass px-2.5 py-2 flex flex-col">
+            <p className="t-label truncate">Portfolio</p>
+            <p className={`num text-sm mt-1 transition-colors duration-[800ms] ${moveCol(dayPct)}`}>{chipPct(dayPct)}</p>
+            <p className="text-[10px] mt-auto pt-1 leading-tight">
+              {benchDelta == null
+                ? <span className="text-fog">vs {state.settings.benchmark}</span>
+                : <><span className={`num ${moveCol(benchDelta)}`}>{signedPct(benchDelta, "pp")}</span><span className="text-fog"> vs {state.settings.benchmark}</span></>}
+            </p>
+          </div>
+          {coreKeys.map(k => <IndexChip key={k} k={k} />)}
+          {extraKeys.length > 0 && <div className="shrink-0 w-px self-stretch bg-edge/60 mx-1" />}
+          {extraKeys.map(k => <IndexChip key={k} k={k} />)}
+        </div>
+        <p className="t-caption mt-2">Index moves reflect each market's latest session.</p>
       </section>
 
       <section className="card">
