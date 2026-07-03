@@ -127,11 +127,14 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
   const hasChart = !!view && view.idx.length >= 2;
 
   const signedMoney = (usd: number) => `${usd >= 0 ? "+" : "−"}${fmt(Math.abs(usd))}`;
-  // secondary balance-sheet cell: fog label over a mono value
-  const Cell = ({ label, val, cls = "text-paper", hint }: { label: string; val: string; cls?: string; hint?: string }) => (
+  // secondary balance-sheet cell: fog label over a mono value, with an optional
+  // tinted percent trailing the value and an optional fog hint line beneath
+  const Cell = ({ label, val, cls = "text-paper", pct, hint }: { label: string; val: string; cls?: string; pct?: string; hint?: string }) => (
     <div className="min-w-0">
       <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
-      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>{val}</p>
+      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>
+        {val}{pct && <span className="text-xs"> {pct}</span>}
+      </p>
       {hint && <p className="text-fog text-[10px] mt-0.5 leading-tight">{hint}</p>}
     </div>
   );
@@ -195,7 +198,8 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
         </button>
         {showDetails && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3 pt-3 border-t border-edge">
-            <Cell label="Unrealized P&L" val={signedMoney(summary.unrealizedUSD)} cls={moveCol(summary.unrealizedUSD)} />
+            <Cell label="Unrealized P&L" val={signedMoney(summary.unrealizedUSD)} cls={moveCol(summary.unrealizedUSD)}
+              pct={summary.unrealizedReturn != null ? `(${signedPct(summary.unrealizedReturn)})` : undefined} hint="on capital deployed" />
             <Cell label="Realized P&L" val={signedMoney(summary.realizedUSD)} cls={moveCol(summary.realizedUSD)} />
             <Cell label="Dividends collected" val={fmt(summary.dividendsUSD)} cls={moveCol(summary.dividendsUSD)} />
             <Cell label="Simple return" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "—"}

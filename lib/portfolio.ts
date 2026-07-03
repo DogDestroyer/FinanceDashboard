@@ -273,6 +273,7 @@ export interface BookSummary {
   holdingsUSD: number; deployedUSD: number; cashUSD: number; netInvestedUSD: number;
   dayPnlUSD: number; unrealizedUSD: number; realizedUSD: number; dividendsUSD: number;
   totalPnlUSD: number;
+  unrealizedReturn: number | null;      // unrealized / deployed (cost basis of open lots)
   totalReturnOnCapital: number | null;  // totalPnl / net invested capital
   simpleTotalReturn: number | null;     // (nav - net invested) / net invested
 }
@@ -306,10 +307,12 @@ export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
     t.type === "DIVIDEND" ? a + toUSD(t.qty * t.price - t.fees, t.currency, fx) : a, 0);
   const netInvestedUSD = netInvested(txs, fx);
   const totalPnlUSD = unrealizedUSD + realizedUSD + dividendsUSD;
+  // unrealized gain as a percent of the capital deployed to earn it (cost basis of open lots)
+  const unrealizedReturn = deployedUSD > 1e-9 ? unrealizedUSD / deployedUSD : null;
   const totalReturnOnCapital = netInvestedUSD > 1e-9 ? totalPnlUSD / netInvestedUSD : null;
   const simpleTotalReturn = netInvestedUSD > 1e-9 ? (navUSD - netInvestedUSD) / netInvestedUSD : null;
   return { holdingsUSD, deployedUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
-    totalPnlUSD, totalReturnOnCapital, simpleTotalReturn };
+    totalPnlUSD, unrealizedReturn, totalReturnOnCapital, simpleTotalReturn };
 }
 
 // ---------- Risk ----------
