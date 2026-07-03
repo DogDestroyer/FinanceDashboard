@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { AppState } from "@/lib/types";
 import { Valued, Position, FxMap, groupWeights, navHistory, twrSeries, rebase, totalReturn, currentDrawdown, externalFlows, xirr, bookSummary } from "@/lib/portfolio";
 import { Donut, Sparkline } from "./Charts";
+import { EmptyState, Skeleton } from "./UI";
 import type { TSSeries } from "./TSChart";
 
 const TSChart = dynamic(() => import("./TSChart"), { ssr: false, loading: () => <div className="h-[216px]" /> });
@@ -15,16 +16,17 @@ const idxFmt = (v: number) => v.toFixed(2);
 function Metric({ label, val, cls }: { label: string; val: string; cls: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
-      <p className={`num text-sm mt-0.5 ${cls}`}>{val}</p>
+      <p className="t-label truncate">{label}</p>
+      <p className={`t-value mt-1 ${cls}`}>{val}</p>
     </div>
   );
 }
 
-export default function Dashboard({ state, valued, positions, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, onRefresh, refreshing }: {
+export default function Dashboard({ state, valued, positions, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, loaded, onRefresh, refreshing, onAddTrade }: {
   state: AppState; valued: Valued[]; positions: Position[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
-  hist: any; base: string; asOf: number | null; stale: boolean; onRefresh: () => void; refreshing: boolean;
+  hist: any; base: string; asOf: number | null; stale: boolean; loaded: boolean;
+  onRefresh: () => void; refreshing: boolean; onAddTrade: () => void;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
   const [showAllMovers, setShowAllMovers] = useState(false);
@@ -131,32 +133,51 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
   // tinted percent trailing the value and an optional fog hint line beneath
   const Cell = ({ label, val, cls = "text-paper", pct, hint }: { label: string; val: string; cls?: string; pct?: string; hint?: string }) => (
     <div className="min-w-0">
-      <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
-      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>
-        {val}{pct && <span className="text-xs"> {pct}</span>}
+      <p className="t-label truncate">{label}</p>
+      <p className={`t-value mt-1 transition-colors duration-[800ms] ${cls}`}>
+        {val}{pct && <span className="text-xs opacity-60"> {pct}</span>}
       </p>
-      {hint && <p className="text-fog text-[10px] mt-0.5 leading-tight">{hint}</p>}
+      {hint && <p className="t-caption mt-0.5">{hint}</p>}
     </div>
   );
   // primary P&L cell: larger value with its percent stacked beneath, both tinted
   const Hero = ({ label, val, pct, cls }: { label: string; val: string; pct: string; cls: string }) => (
     <div className="min-w-0">
-      <p className="text-fog text-[10px] uppercase tracking-wide">{label}</p>
-      <p className={`num text-xl leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>{val}</p>
-      <p className={`num text-xs mt-0.5 transition-colors duration-1000 ${cls}`}>{pct}</p>
+      <p className="t-label">{label}</p>
+      <p className={`num text-xl leading-tight mt-1 transition-colors duration-[800ms] ${cls}`}>{val}</p>
+      <p className={`num text-xs mt-1 transition-colors duration-[800ms] ${cls} opacity-60`}>{pct}</p>
     </div>
+  );
+
+  if (!loaded) return (
+    <>
+      <section aria-label="Loading" className="pt-1">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-10 w-56 mt-3" />
+        <Skeleton className="h-4 w-44 mt-3" />
+        <div className="grid grid-cols-2 gap-4 mt-4">
+          <Skeleton className="h-14" /><Skeleton className="h-14" />
+        </div>
+      </section>
+      <div className="card"><Skeleton className="h-[150px] w-full" /></div>
+      <div className="card"><Skeleton className="h-[200px] w-full" /></div>
+    </>
+  );
+
+  if (!state.transactions.length) return (
+    <EmptyState text="No positions yet. Log your first trade and your book builds itself." actionLabel="+ Trade" onAction={onAddTrade} />
   );
 
   return (
     <>
       <section aria-label="Net asset value">
         <div className="flex items-center gap-2">
-          <p className="text-fog text-xs uppercase tracking-widest">
+          <p className="t-label">
             Net asset value · {base}
             {asOfStr && <span className={`normal-case tracking-normal num ${refreshing ? "animate-pulse" : ""}`}> · {stale ? "stale, last" : "as of"} {asOfStr}</span>}
           </p>
           <button onClick={onRefresh} disabled={refreshing} aria-label="Refresh prices"
-            className="text-fog hover:text-brass disabled:opacity-50 shrink-0">
+            className="press text-fog hover:text-brass disabled:opacity-50 shrink-0">
             <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="23 4 23 10 17 10" />
@@ -165,9 +186,9 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
             </svg>
           </button>
         </div>
-        <p className={`num text-4xl font-medium mt-1 ${stale ? "text-fog" : ""}`}>{fmt(navUSD)}</p>
+        <p className={`t-hero mt-1.5 ${stale ? "text-fog" : ""}`}>{fmt(navUSD)}</p>
         {hasChart && (
-          <div className="flex items-center gap-3 mt-1.5">
+          <div className="flex items-center gap-3 mt-2">
             <Sparkline data={view!.idx} />
             {stats?.activeRet != null && (
               <span className={`num text-xs ${moveCol(stats.activeRet)}`}>
@@ -176,20 +197,20 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
             )}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-edge">
+        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-edge/40">
           <Hero label="Day P&L" val={signedMoney(summary.dayPnlUSD)} cls={moveCol(summary.dayPnlUSD)}
             pct={`${dayPct >= 0 ? "+" : "−"}${Math.abs(dayPct * 100).toFixed(2)}%`} />
           <Hero label="Total P&L" val={signedMoney(summary.totalPnlUSD)} cls={moveCol(summary.totalPnlUSD)}
-            pct={summary.totalReturnOnCapital != null ? signedPct(summary.totalReturnOnCapital) : "—"} />
+            pct={summary.totalReturnOnCapital != null ? signedPct(summary.totalReturnOnCapital) : "–"} />
         </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 mt-4">
           <Cell label="Deployed" val={fmt(summary.deployedUSD)} hint="in the market, at cost" />
           <Cell label="Cash" val={fmt(summary.cashUSD)} hint="uninvested" />
           <Cell label="Holdings value" val={fmt(summary.holdingsUSD)} hint="at today's prices" />
           <Cell label="Contributed" val={fmt(summary.netInvestedUSD)} hint="deposits less withdrawals" />
         </div>
         <button onClick={() => setShowDetails(s => !s)}
-          className="flex items-center gap-1 text-xs text-fog hover:text-paper mt-4">
+          className="press flex items-center gap-1 text-xs text-fog hover:text-paper mt-4">
           <svg className={`w-3 h-3 transition-transform ${showDetails ? "rotate-90" : ""}`} viewBox="0 0 24 24"
             fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 18 15 12 9 6" />
@@ -197,25 +218,25 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
           {showDetails ? "Hide breakdown" : "P&L breakdown"}
         </button>
         {showDetails && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3 pt-3 border-t border-edge">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 mt-3 pt-3 border-t border-edge/40">
             <Cell label="Unrealized P&L" val={signedMoney(summary.unrealizedUSD)} cls={moveCol(summary.unrealizedUSD)}
               pct={summary.unrealizedReturn != null ? `(${signedPct(summary.unrealizedReturn)})` : undefined} hint="on capital deployed" />
             <Cell label="Realized P&L" val={signedMoney(summary.realizedUSD)} cls={moveCol(summary.realizedUSD)} />
             <Cell label="Dividends collected" val={fmt(summary.dividendsUSD)} cls={moveCol(summary.dividendsUSD)} />
-            <Cell label="Simple return" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "—"}
+            <Cell label="Simple return" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "–"}
               cls={summary.simpleTotalReturn != null ? moveCol(summary.simpleTotalReturn) : "text-fog"} hint="cross-check" />
           </div>
         )}
-        <p className="text-[11px] text-fog mt-3 leading-snug">Total P&L percent is return on contributed capital (deposits less withdrawals), not on cost basis.</p>
+        <p className="t-caption mt-3">Total P&L percent is return on contributed capital (deposits less withdrawals), not on cost basis.</p>
       </section>
 
       <section className="card">
         <div className="flex items-center mb-3">
-          <h2 className="text-sm font-semibold">Allocation</h2>
+          <h2 className="t-title">Allocation</h2>
           <div className="ml-auto flex gap-1 text-[11px]">
             {(["assetClass", "geo", "currency"] as const).map(m => (
               <button key={m} onClick={() => setDonutMode(m)}
-                className={`px-2.5 py-1 rounded-full border ${donutMode === m ? "border-brass text-brass" : "border-edge text-fog"}`}>
+                className={`press px-2.5 py-1 rounded-full border ${donutMode === m ? "border-brass text-brass" : "border-edge/60 text-fog"}`}>
                 {m === "assetClass" ? "Class" : m === "geo" ? "Geo" : "Ccy"}
               </button>
             ))}
@@ -226,60 +247,60 @@ export default function Dashboard({ state, valued, positions, cash, cashUSD, nav
 
       <section className="card">
         <div className="flex items-center mb-2">
-          <h2 className="text-sm font-semibold">Performance vs {state.settings.benchmark}</h2>
+          <h2 className="t-title">Performance vs {state.settings.benchmark}</h2>
           <div className="ml-auto flex gap-1 text-[11px]">
             {PERIODS.map(([p]) => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-2 py-0.5 rounded-full border ${period === p ? "border-brass text-brass" : "border-edge text-fog"}`}>
+                className={`press px-2 py-0.5 rounded-full border ${period === p ? "border-brass text-brass" : "border-edge/60 text-fog"}`}>
                 {p}
               </button>
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-fog mb-2">Time-weighted return, both lines re-indexed to 100 at the period start. Deposits and withdrawals don't move this line, only investment performance does.</p>
+        <p className="t-caption mb-2">Time-weighted return, both lines re-indexed to 100 at the period start. Deposits and withdrawals don't move this line, only investment performance does.</p>
         {hasChart
           ? <TSChart series={navSeries} height={200} valueFmt={idxFmt} spreadLabel="active" />
-          : <p className="text-fog text-xs py-6 text-center">The NAV chart appears once you have dated transactions and price history.</p>}
+          : <p className="t-caption text-center py-6">The NAV chart appears once you have dated transactions and price history.</p>}
         {stats && (
           <>
-            <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge text-center">
+            <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-edge/40 text-center">
               <Metric label="Return" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
-              <Metric label={state.settings.benchmark} val={stats.benchRet === null ? "—" : signedPct(stats.benchRet)}
+              <Metric label={state.settings.benchmark} val={stats.benchRet === null ? "–" : signedPct(stats.benchRet)}
                 cls={stats.benchRet === null ? "text-fog" : moveCol(stats.benchRet)} />
-              <Metric label="Active" val={stats.activeRet === null ? "—" : signedPct(stats.activeRet, "pp")}
+              <Metric label="Active" val={stats.activeRet === null ? "–" : signedPct(stats.activeRet, "pp")}
                 cls={stats.activeRet === null ? "text-fog" : moveCol(stats.activeRet)} />
               <Metric label="Drawdown" val={`${(stats.curDD * 100).toFixed(1)}%`} cls={stats.curDD < -1e-9 ? "text-loss" : "text-fog"} />
             </div>
-            <div className="grid grid-cols-3 gap-2 mt-2 pt-2 text-center">
+            <div className="grid grid-cols-3 gap-2 mt-3 text-center">
               <Metric label="TWR" val={signedPct(stats.periodRet)} cls={moveCol(stats.periodRet)} />
-              <Metric label={mwr && !mwr.annualized ? `MWR ${mwr.days}d` : "XIRR"} val={mwr ? signedPct(mwr.value) : "—"}
+              <Metric label={mwr && !mwr.annualized ? `MWR ${mwr.days}d` : "XIRR"} val={mwr ? signedPct(mwr.value) : "–"}
                 cls={mwr ? moveCol(mwr.value) : "text-fog"} />
-              <Metric label="Timing gap" val={mwr ? signedPct(stats.periodRet - mwr.value, "pp") : "—"}
+              <Metric label="Timing gap" val={mwr ? signedPct(stats.periodRet - mwr.value, "pp") : "–"}
                 cls={mwr ? moveCol(stats.periodRet - mwr.value) : "text-fog"} />
             </div>
-            <p className="text-[11px] text-fog mt-2">TWR is what your strategy earned; XIRR is what your dollars earned. The gap is your deposit timing.</p>
+            <p className="t-caption mt-3">TWR is what your strategy earned; XIRR is what your dollars earned. The gap is your deposit timing.</p>
           </>
         )}
       </section>
 
       <section className="card">
         <div className="flex items-center mb-2">
-          <h2 className="text-sm font-semibold">Movers today</h2>
-          {movers.length > 0 && <span className="ml-auto text-[11px] text-fog num">{movers.length} priced</span>}
+          <h2 className="t-title">Movers today</h2>
+          {movers.length > 0 && <span className="ml-auto t-caption num">{movers.length} priced</span>}
         </div>
-        {movers.length === 0 && <p className="text-fog text-xs">No priced positions yet. Add a trade to begin.</p>}
-        <div className="space-y-2">
+        {movers.length === 0 && <p className="t-caption">No priced positions yet. Add a trade to begin.</p>}
+        <div className="space-y-2.5">
           {visibleMovers.map(m => (
-            <div key={m.symbol} className="flex items-center text-sm">
+            <div key={m.symbol} className="flex items-center text-[13px]">
               <span className="num font-medium w-16 shrink-0">{m.symbol}</span>
-              <span className="text-fog text-xs truncate flex-1">{m.name}</span>
+              <span className="text-fog text-xs truncate flex-1 pr-2">{m.name}</span>
               <span className={`num w-16 text-right ${moveCol(m.chg)}`}>{m.chg >= 0 ? "+" : "−"}{Math.abs(m.chg * 100).toFixed(2)}%</span>
               <span className={`num w-24 text-right ${moveCol(m.chg)}`}>{m.dayPnlUSD >= 0 ? "+" : "−"}{fmt(Math.abs(m.dayPnlUSD))}</span>
             </div>
           ))}
         </div>
         {movers.length > 6 && (
-          <button onClick={() => setShowAllMovers(!showAllMovers)} className="text-xs text-fog underline underline-offset-2 mt-3">
+          <button onClick={() => setShowAllMovers(!showAllMovers)} className="press text-xs text-fog hover:text-paper underline underline-offset-2 mt-3">
             {showAllMovers ? "Show fewer" : `Show all ${movers.length}`}
           </button>
         )}

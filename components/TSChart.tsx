@@ -78,7 +78,7 @@ export default function TSChart({ series, height = 200, valueFmt, spreadLabel }:
     const mkSpread = (d: number) => ({ text: `${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)}pp`, pos: d >= 0 });
     const showLast = () => {
       const last = series.map(s => s.data[s.data.length - 1]);
-      const items = series.map((s, i) => ({ label: s.label, color: s.color, text: last[i] ? fmt(last[i].value) : "—" }));
+      const items = series.map((s, i) => ({ label: s.label, color: s.color, text: last[i] ? fmt(last[i].value) : "–" }));
       const spread = spreadLabel && series.length >= 2 && last[0] && last[1] ? mkSpread(last[0].value - last[1].value) : undefined;
       setLegend({ date: last[0] ? fmtTime(last[0].time) : "", items, spread });
     };
@@ -86,7 +86,7 @@ export default function TSChart({ series, height = 200, valueFmt, spreadLabel }:
       if (param.time == null || !param.point) { showLast(); return; }
       const items = series.map((s, i) => {
         const pt = param.seriesData.get(made[i]) as any;
-        return { label: s.label, color: s.color, text: pt && pt.value != null ? fmt(pt.value) : "—" };
+        return { label: s.label, color: s.color, text: pt && pt.value != null ? fmt(pt.value) : "–" };
       });
       let spread;
       if (spreadLabel && series.length >= 2) {

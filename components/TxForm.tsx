@@ -53,22 +53,22 @@ export default function TxForm({ txs, initial, onAdd, onUpdate, onDelete, onClos
     reset();
   };
 
-  const L = ({ children }: { children: React.ReactNode }) => <label className="block text-[11px] text-fog mb-1 mt-3">{children}</label>;
+  const L = ({ children }: { children: React.ReactNode }) => <label className="block t-label mb-1 mt-3">{children}</label>;
   const ledger = [...txs].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
   return (
     <div className="fixed inset-0 bg-ink/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="bg-panel border border-edge rounded-t-2xl sm:rounded-2xl w-full max-w-lg p-5 max-h-[88vh] overflow-y-auto"
+      <div className="bg-panel border border-edge/60 rounded-t-2xl sm:rounded-2xl w-full max-w-lg p-5 max-h-[88vh] overflow-y-auto"
         onClick={e => e.stopPropagation()} style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
-        <div className="flex items-center mb-2">
-          <h2 className="font-semibold">{editingId ? "Edit transaction" : "Log a transaction"}</h2>
-          <button onClick={onClose} className="ml-auto text-fog text-xl leading-none px-2" aria-label="Close">×</button>
+        <div className="flex items-center mb-3">
+          <h2 className="t-title">{editingId ? "Edit transaction" : "Log a transaction"}</h2>
+          <button onClick={onClose} className="press ml-auto text-fog text-xl leading-none px-2" aria-label="Close">×</button>
         </div>
 
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-5 gap-1.5">
           {(["BUY", "SELL", "DIVIDEND", "DEPOSIT", "WITHDRAW"] as TxType[]).map(t => (
             <button key={t} onClick={() => set("type", t)}
-              className={`text-[10px] py-2 rounded-lg border ${f.type === t ? "border-brass text-brass" : "border-edge text-fog"}`}>
+              className={`press text-[10px] py-2 rounded-lg border ${f.type === t ? "border-brass text-brass" : "border-edge/60 text-fog"}`}>
               {cap(t)}
             </button>
           ))}
@@ -105,31 +105,31 @@ export default function TxForm({ txs, initial, onAdd, onUpdate, onDelete, onClos
         </div>
 
         <button onClick={submit} disabled={!valid}
-          className="w-full mt-5 bg-brass text-ink font-semibold rounded-xl py-3 disabled:opacity-40">
+          className="press w-full mt-5 bg-brass text-ink font-semibold rounded-xl py-3 disabled:opacity-40">
           {editingId ? "Update transaction" : "Save transaction"}
         </button>
         {editingId && (
-          <button onClick={reset} className="w-full mt-2 text-fog text-xs py-1">Cancel edit, start a new entry</button>
+          <button onClick={reset} className="press w-full mt-2 text-fog text-xs py-1">Cancel edit, start a new entry</button>
         )}
 
-        <div className="mt-6 pt-4 border-t border-edge">
+        <div className="mt-6 pt-4 border-t border-edge/40">
           <div className="flex items-baseline mb-2">
-            <p className="text-[11px] text-fog uppercase tracking-wide">History ({txs.length})</p>
-            <span className="ml-auto text-[10px] text-fog">Tap a row to edit</span>
+            <p className="t-label">History ({txs.length})</p>
+            <span className="ml-auto t-label">Tap a row to edit</span>
           </div>
-          {ledger.length === 0 && <p className="text-fog text-xs py-2">No transactions yet.</p>}
+          {ledger.length === 0 && <p className="t-caption py-2">No transactions yet.</p>}
           <div className="space-y-1 num text-xs">
             {ledger.map(t => {
               const cashRow = t.type === "DEPOSIT" || t.type === "WITHDRAW";
               return (
                 <div key={t.id}
                   className={`flex items-center gap-2 rounded-lg pl-2 pr-1 py-1.5 ${t.id === editingId ? "bg-ink border border-brass/50" : "border border-transparent"}`}>
-                  <button onClick={() => startEdit(t)} className="flex-1 min-w-0 text-left flex items-baseline gap-2">
+                  <button onClick={() => startEdit(t)} className="press flex-1 min-w-0 text-left flex items-baseline gap-2">
                     <span className="text-fog shrink-0">{t.date}</span>
                     <span className="font-medium shrink-0">{cap(t.type)}{cashRow ? "" : ` ${t.symbol}`}</span>
                     <span className="text-fog truncate ml-auto">{cashRow ? `${t.qty} ${t.currency}` : `${t.qty} @ ${t.price} ${t.currency}`}</span>
                   </button>
-                  <button onClick={() => remove(t.id)} className="text-loss shrink-0 px-2" aria-label="Delete transaction">Delete</button>
+                  <button onClick={() => remove(t.id)} className="press text-loss shrink-0 px-2" aria-label="Delete transaction">Delete</button>
                 </div>
               );
             })}

@@ -6,11 +6,39 @@ html { -webkit-text-size-adjust: 100%; }
 body { background: #0D1321; color: #E9EDF5; font-feature-settings: "tnum" 1; }
 * { -webkit-tap-highlight-color: transparent; }
 ::selection { background: #D9A44133; }
+
 input, select, textarea {
-  @apply bg-ink border border-edge rounded-lg px-3 py-2 text-sm text-paper w-full;
+  @apply bg-ink border border-edge rounded-xl px-3 py-2 text-sm text-paper w-full;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid #D9A44166; outline-offset: 0; }
+
 .num { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
-.card { @apply bg-panel border border-edge rounded-2xl p-4; }
-.hair { @apply border-t border-edge; }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+@layer components {
+  /* type scale: one source of truth, no orphan sizes */
+  .t-hero    { @apply num font-medium text-paper; font-size: clamp(28px, 10vw, 40px); line-height: 1.04; letter-spacing: -0.02em; }
+  .t-title   { @apply font-sans font-semibold text-paper; font-size: 13px; line-height: 1.3; }
+  .t-value   { @apply num text-paper; font-size: 15px; line-height: 1.2; }
+  .t-label   { @apply text-fog uppercase; font-size: 10px; line-height: 1.2; letter-spacing: 0.08em; }
+  .t-caption { @apply text-fog; font-size: 11px; line-height: 1.45; }
+
+  /* surfaces: depth from color, never shadow */
+  .card { @apply bg-panel rounded-2xl p-4; border: 1px solid rgba(35, 45, 69, 0.6); }
+  .hair { border-top: 1px solid rgba(35, 45, 69, 0.4); }
+}
+
+@layer utilities {
+  .press { @apply transition-transform duration-150 ease-out active:scale-[0.98]; }
+  .animate-fade { animation: fade 120ms ease-out both; }
+  .skeleton {
+    background: linear-gradient(90deg, #151C2E 25%, #1F2942 37%, #151C2E 63%);
+    background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

@@ -9,6 +9,7 @@ const config: Config = {
         edge: "#232D45",     // hairlines
         fog: "#8A94AC",      // secondary text
         paper: "#E9EDF5",    // primary text
+        raised: "#1A2338",   // bottom bar: one step lighter than panel
         gain: "#3FB68B",
         loss: "#E0596B",
         brass: "#D9A441"     // single accent: brass, used sparingly
