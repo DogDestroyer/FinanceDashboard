@@ -144,7 +144,7 @@ export default function App() {
       {err && <p className="text-loss text-xs px-4">{err}</p>}
 
       <main className="flex-1 px-4 space-y-4 pt-2">
-        {tab === "Book" && <Dashboard state={state} valued={valued} cash={cash} cashUSD={cashUSD}
+        {tab === "Book" && <Dashboard state={state} valued={valued} positions={positions} cash={cash} cashUSD={cashUSD}
           navUSD={navUSD} fx={fx} fmt={fmt} disp={disp} hist={hist} base={base} asOf={asOf} stale={stale}
           onRefresh={manualRefresh} refreshing={refreshing} />}
         {tab === "Holdings" && <Holdings valued={valued} fmt={fmt} txs={state.transactions} hist={hist} onDelete={delTx} onEdit={openTx} />}

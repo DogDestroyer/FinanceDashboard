@@ -268,6 +268,48 @@ export function xirr(cashflows: { date: string; amount: number }[]): number | nu
   return (lo + hi) / 2;
 }
 
+// ---------- Book summary (balance sheet + P&L attribution) ----------
+export interface BookSummary {
+  holdingsUSD: number; cashUSD: number; netInvestedUSD: number;
+  dayPnlUSD: number; unrealizedUSD: number; realizedUSD: number; dividendsUSD: number;
+  totalPnlUSD: number;
+  totalReturnOnCapital: number | null;  // totalPnl / net invested capital
+  simpleTotalReturn: number | null;     // (nav - net invested) / net invested
+}
+
+// Net invested capital: external contributions only, in USD at current FX.
+// Deposits add (qty - fees), withdrawals remove (qty + fees), matching how the
+// cash ledger is booked so that NAV - netInvested reconciles exactly to
+// unrealized + realized + dividends. Buys, sells and dividends are internal.
+export function netInvested(txs: Tx[], fx: FxMap): number {
+  let n = 0;
+  for (const t of txs) {
+    if (t.type === "DEPOSIT") n += toUSD(t.qty - t.fees, t.currency, fx);
+    else if (t.type === "WITHDRAW") n -= toUSD(t.qty + t.fees, t.currency, fx);
+  }
+  return n;
+}
+
+// Balance-sheet and P&L rollup for the summary grid. Holdings, day P&L and
+// unrealized come from the priced open positions; realized comes from the full
+// positions list (which keeps fully-closed names); dividends come straight from
+// the transaction log (robust to the open-position filter).
+export function bookSummary(valued: Valued[], positions: Position[], txs: Tx[],
+  cashUSD: number, navUSD: number, fx: FxMap): BookSummary {
+  const holdingsUSD = valued.reduce((a, v) => a + v.mvUSD, 0);
+  const dayPnlUSD = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
+  const unrealizedUSD = valued.reduce((a, v) => a + v.unrealizedUSD, 0);
+  const realizedUSD = positions.reduce((a, p) => a + toUSD(p.realizedPnl, p.currency, fx), 0);
+  const dividendsUSD = txs.reduce((a, t) =>
+    t.type === "DIVIDEND" ? a + toUSD(t.qty * t.price - t.fees, t.currency, fx) : a, 0);
+  const netInvestedUSD = netInvested(txs, fx);
+  const totalPnlUSD = unrealizedUSD + realizedUSD + dividendsUSD;
+  const totalReturnOnCapital = netInvestedUSD > 1e-9 ? totalPnlUSD / netInvestedUSD : null;
+  const simpleTotalReturn = netInvestedUSD > 1e-9 ? (navUSD - netInvestedUSD) / netInvestedUSD : null;
+  return { holdingsUSD, cashUSD, netInvestedUSD, dayPnlUSD, unrealizedUSD, realizedUSD, dividendsUSD,
+    totalPnlUSD, totalReturnOnCapital, simpleTotalReturn };
+}
+
 // ---------- Risk ----------
 export function annVol(rets: number[]) {
   const r = rets.filter(x => isFinite(x));

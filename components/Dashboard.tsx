@@ -1,8 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { AppState } from "@/lib/types";
-import { Valued, FxMap, groupWeights, navHistory, twrSeries, toUSD, rebase, totalReturn, currentDrawdown, externalFlows, xirr } from "@/lib/portfolio";
+import { Valued, Position, FxMap, groupWeights, navHistory, twrSeries, rebase, totalReturn, currentDrawdown, externalFlows, xirr, bookSummary } from "@/lib/portfolio";
 import { Donut, Sparkline } from "./Charts";
 import type { TSSeries } from "./TSChart";
 
@@ -21,20 +21,30 @@ function Metric({ label, val, cls }: { label: string; val: string; cls: string }
   );
 }
 
-export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, onRefresh, refreshing }: {
-  state: AppState; valued: Valued[]; cash: Record<string, number>; cashUSD: number;
+export default function Dashboard({ state, valued, positions, cash, cashUSD, navUSD, fx, fmt, disp, hist, base, asOf, stale, onRefresh, refreshing }: {
+  state: AppState; valued: Valued[]; positions: Position[]; cash: Record<string, number>; cashUSD: number;
   navUSD: number; fx: FxMap; fmt: (usd: number, dp?: number) => string; disp: (usd: number) => number;
   hist: any; base: string; asOf: number | null; stale: boolean; onRefresh: () => void; refreshing: boolean;
 }) {
   const [donutMode, setDonutMode] = useState<"assetClass" | "geo" | "currency">("assetClass");
   const [showAllMovers, setShowAllMovers] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [period, setPeriod] = useState("All");
 
-  const dayPnl = valued.reduce((a, v) => a + v.dayPnlUSD, 0);
-  const totalPnl = valued.reduce((a, v) => a + v.unrealizedUSD + v.realizedUSD, 0);
-  const invested = valued.reduce((a, v) => a + toUSD(v.costBasis, v.currency, fx), 0);
-  const dayPct = navUSD - dayPnl > 0 ? dayPnl / (navUSD - dayPnl) : 0;
-  const totalPct = invested > 0 ? totalPnl / invested : 0;
+  const summary = useMemo(() => bookSummary(valued, positions, state.transactions, cashUSD, navUSD, fx),
+    [valued, positions, state.transactions, cashUSD, navUSD, fx]);
+  // day P&L percent is measured against yesterday's NAV
+  const dayPct = navUSD - summary.dayPnlUSD > 0 ? summary.dayPnlUSD / (navUSD - summary.dayPnlUSD) : 0;
+
+  // dev cross-check: total return on capital must equal the simple total return
+  // by accounting identity; a divergence beyond 0.1pp signals a bug
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const a = summary.totalReturnOnCapital, b = summary.simpleTotalReturn;
+    if (a == null || b == null) return;
+    if (Math.abs(a - b) > 0.001)
+      console.warn(`[Delta AM] summary cross-check diverged by ${((a - b) * 100).toFixed(3)}pp: total return on capital ${(a * 100).toFixed(3)}% vs simple total return ${(b * 100).toFixed(3)}%. Possible accounting bug.`);
+  }, [summary]);
 
   const donut = useMemo(() => groupWeights(valued, cash, fx, donutMode), [valued, cash, fx, donutMode]);
   const donutTotal = donut.reduce((a, [, v]) => a + v, 0);
@@ -116,11 +126,15 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
   const asOfStr = asOf ? new Date(asOf).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" }) : null;
   const hasChart = !!view && view.idx.length >= 2;
 
-  // transition-colors so the tint fades over 1s when P&L flips sign on a refresh
-  const P = ({ v, pct }: { v: number; pct: number }) => (
-    <span className={`num transition-colors duration-1000 ${v >= 0 ? "text-gain" : "text-loss"}`}>
-      {v >= 0 ? "+" : "−"}{fmt(Math.abs(v))} ({(pct * 100).toFixed(2)}%)
-    </span>
+  const signedMoney = (usd: number) => `${usd >= 0 ? "+" : "−"}${fmt(Math.abs(usd))}`;
+  // one summary cell: fog label, mono value, optional smaller secondary figure
+  const Cell = ({ label, val, cls = "text-paper", sub }: { label: string; val: string; cls?: string; sub?: string }) => (
+    <div className="min-w-0">
+      <p className="text-fog text-[10px] uppercase tracking-wide truncate">{label}</p>
+      <p className={`num text-[15px] leading-tight mt-0.5 transition-colors duration-1000 ${cls}`}>
+        {val}{sub && <span className="text-xs text-fog"> {sub}</span>}
+      </p>
+    </div>
   );
 
   return (
@@ -152,11 +166,27 @@ export default function Dashboard({ state, valued, cash, cashUSD, navUSD, fx, fm
             )}
           </div>
         )}
-        <div className="flex gap-5 mt-2 text-sm">
-          <div><span className="text-fog text-xs block">Today</span><P v={dayPnl} pct={dayPct} /></div>
-          <div><span className="text-fog text-xs block">Total</span><P v={totalPnl} pct={totalPct} /></div>
-          <div><span className="text-fog text-xs block">Cash</span><span className="num">{fmt(cashUSD)}</span></div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-3">
+          <Cell label="Day P&L" val={signedMoney(summary.dayPnlUSD)} cls={moveCol(summary.dayPnlUSD)} sub={`(${(dayPct * 100).toFixed(2)}%)`} />
+          <Cell label="Total P&L" val={signedMoney(summary.totalPnlUSD)} cls={moveCol(summary.totalPnlUSD)}
+            sub={summary.totalReturnOnCapital != null ? `(${signedPct(summary.totalReturnOnCapital)})` : undefined} />
+          <Cell label="Cash" val={fmt(summary.cashUSD)} />
+          <Cell label="Holdings value" val={fmt(summary.holdingsUSD)} />
         </div>
+        <p className="text-[11px] text-fog mt-2">Return figures are measured against net contributed capital, not cost basis.</p>
+        <button onClick={() => setShowDetails(s => !s)} className="text-xs text-fog underline underline-offset-2 mt-2">
+          {showDetails ? "Hide details" : "Details"}
+        </button>
+        {showDetails && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-2">
+            <Cell label="Net invested capital" val={fmt(summary.netInvestedUSD)} />
+            <Cell label="Unrealized P&L" val={signedMoney(summary.unrealizedUSD)} cls={moveCol(summary.unrealizedUSD)} />
+            <Cell label="Realized P&L" val={signedMoney(summary.realizedUSD)} cls={moveCol(summary.realizedUSD)} />
+            <Cell label="Dividends collected" val={fmt(summary.dividendsUSD)} cls={moveCol(summary.dividendsUSD)} />
+            <Cell label="Simple return (check)" val={summary.simpleTotalReturn != null ? signedPct(summary.simpleTotalReturn) : "—"}
+              cls={summary.simpleTotalReturn != null ? moveCol(summary.simpleTotalReturn) : "text-fog"} />
+          </div>
+        )}
       </section>
 
       <section className="card">
